@@ -1,0 +1,10 @@
+# 忽略的文件
+Mupots
+results
+work_dirs
+**/.ipynb_checkpoints
+**/.pytest_cache
+**/__pycache__
+.ssh
+
+checkpoint
