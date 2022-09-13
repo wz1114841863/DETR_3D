@@ -246,7 +246,7 @@ class PETRHead(AnchorFreeHead):
         mlvl_positional_encodings = []
         for feat in mlvl_feats:
             mlvl_masks.append(
-                F.interpountiullate(img_masks[None],  # 扩充维度
+                F.interpolate(img_masks[None],  # 扩充维度
                                 size=feat.shape[-2:]).to(torch.bool).squeeze(0))
             mlvl_positional_encodings.append(
                 self.positional_encoding(mlvl_masks[-1]))
@@ -431,7 +431,6 @@ class PETRHead(AnchorFreeHead):
         Returns:
             dict[str, Tensor]: A dictionary of loss components.
         """
-        import pdb;pdb.set_trace()
         assert proposal_cfg is None, '"proposal_cfg" must be None'
         outs = self(x, img_metas)
         memory, mlvl_masks = outs[-2:]
@@ -897,15 +896,15 @@ class PETRHead(AnchorFreeHead):
 
     @force_fp32(apply_to=('all_cls_scores', 'all_kpt_preds'))
     def get_bboxes(self,
-                   all_cls_scores,
-                   all_kpt_preds,
-                   enc_cls_scores,
-                   enc_kpt_preds,
-                   hm_proto,
-                   memory,
-                   mlvl_masks,
-                   img_metas,
-                   rescale=False):
+                    all_cls_scores,
+                    all_kpt_preds,
+                    enc_cls_scores,
+                    enc_kpt_preds,
+                    hm_proto,
+                    memory,
+                    mlvl_masks,
+                    img_metas,
+                    rescale=False):
         """Transform network outputs for a batch into bbox predictions.
 
         Args:

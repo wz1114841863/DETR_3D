@@ -33,24 +33,24 @@ class SOITTransformer(DeformableDetrTransformer):
     """
 
     def __init__(self,
-                 mask_channels=8,
-                 seg_encoder=dict(
-                     type='DetrTransformerEncoder',
-                     num_layers=1,
-                     transformerlayers=dict(
-                         type='BaseTransformerLayer',
-                         attn_cfgs=dict(
-                             type='MultiScaleDeformableAttention',
-                             embed_dims=256,
-                             num_heads=1,
-                             num_levels=1),
-                         feedforward_channels=1024,
-                         ffn_dropout=0.1,
-                         operation_order=('self_attn', 'norm', 'ffn', 'norm'))),
-                 as_two_stage=False,
-                 num_feature_levels=4,
-                 two_stage_num_proposals=300,
-                 **kwargs):
+                mask_channels=8,
+                seg_encoder=dict(
+                    type='DetrTransformerEncoder',
+                    num_layers=1,
+                    transformerlayers=dict(
+                        type='BaseTransformerLayer',
+                        attn_cfgs=dict(
+                            type='MultiScaleDeformableAttention',
+                            embed_dims=256,
+                            num_heads=1,
+                            num_levels=1),
+                        feedforward_channels=1024,
+                        ffn_dropout=0.1,
+                        operation_order=('self_attn', 'norm', 'ffn', 'norm'))),
+                as_two_stage=False,
+                num_feature_levels=4,
+                two_stage_num_proposals=300,
+                **kwargs):
         super(SOITTransformer, self).__init__(
             as_two_stage=as_two_stage, 
             num_feature_levels=num_feature_levels,
@@ -525,44 +525,44 @@ class PETRTransformer(Transformer):
     """
 
     def __init__(self,
-                 hm_encoder=dict(
-                     type='DetrTransformerEncoder',
-                     num_layers=1,
-                     transformerlayers=dict(
-                         type='BaseTransformerLayer',
-                         attn_cfgs=dict(
-                             type='MultiScaleDeformableAttention',
-                             embed_dims=256,
-                             num_levels=1),
-                         feedforward_channels=1024,
-                         ffn_dropout=0.1,
-                         operation_order=('self_attn', 'norm', 'ffn',
-                                          'norm'))),
-                 refine_decoder=dict(
-                     type='DeformableDetrTransformerDecoder',
-                     num_layers=1,
-                     return_intermediate=True,
-                     transformerlayers=dict(
-                         type='DetrTransformerDecoderLayer',
-                         attn_cfgs=[
-                             dict(
-                                 type='MultiheadAttention',
-                                 embed_dims=256,
-                                 num_heads=8,
-                                 dropout=0.1),
-                             dict(
-                                 type='MultiScaleDeformableAttention',
-                                 embed_dims=256)
-                         ],
-                         feedforward_channels=1024,
-                         ffn_dropout=0.1,
-                         operation_order=('self_attn', 'norm', 'cross_attn',
-                                          'norm', 'ffn', 'norm'))),
-                 as_two_stage=True,
-                 num_feature_levels=4,
-                 two_stage_num_proposals=300,
-                 num_keypoints=17,
-                 **kwargs):
+                hm_encoder=dict(
+                    type='DetrTransformerEncoder',
+                    num_layers=1,
+                    transformerlayers=dict(
+                        type='BaseTransformerLayer',
+                        attn_cfgs=dict(
+                            type='MultiScaleDeformableAttention',
+                            embed_dims=256,
+                            num_levels=1),
+                        feedforward_channels=1024,
+                        ffn_dropout=0.1,
+                        operation_order=('self_attn', 'norm', 'ffn',
+                                        'norm'))),
+                refine_decoder=dict(
+                    type='DeformableDetrTransformerDecoder',
+                    num_layers=1,
+                    return_intermediate=True,
+                    transformerlayers=dict(
+                        type='DetrTransformerDecoderLayer',
+                        attn_cfgs=[
+                            dict(
+                                type='MultiheadAttention',
+                                embed_dims=256,
+                                num_heads=8,
+                                dropout=0.1),
+                            dict(
+                                type='MultiScaleDeformableAttention',
+                                embed_dims=256)
+                        ],
+                        feedforward_channels=1024,
+                        ffn_dropout=0.1,
+                        operation_order=('self_attn', 'norm', 'cross_attn',
+                                        'norm', 'ffn', 'norm'))),
+                as_two_stage=True,
+                num_feature_levels=4,
+                two_stage_num_proposals=300,
+                num_keypoints=17,
+                **kwargs):
         super(PETRTransformer, self).__init__(**kwargs)
         self.as_two_stage = as_two_stage
         self.num_feature_levels = num_feature_levels
@@ -724,7 +724,7 @@ class PETRTransformer(Transformer):
         pos = proposals[:, :, :, None] / dim_t
         # N, L, 4, 64, 2
         pos = torch.stack((pos[:, :, :, 0::2].sin(), pos[:, :, :, 1::2].cos()),
-                          dim=4).flatten(2)
+                            dim=4).flatten(2)
         return pos
 
     def forward(self,
@@ -810,7 +810,7 @@ class PETRTransformer(Transformer):
         reference_points = \
             self.get_reference_points(spatial_shapes,
                                         valid_ratios,
-                                        device=feat.device)
+                                        device=feat.device)  # (bs, num_keys, num_levels, 2)
 
         feat_flatten = feat_flatten.permute(1, 0, 2)  # (H*W, bs, embed_dims), [20735, 1, 256]
         lvl_pos_embed_flatten = lvl_pos_embed_flatten.permute(
@@ -834,15 +834,15 @@ class PETRTransformer(Transformer):
         hm_proto = None
         if self.training:
             hm_memory = memory[
-                :, level_start_index[0]:level_start_index[1], :]
+                :, level_start_index[0]:level_start_index[1], :]  # [bs, h1 * w1, 256]
             hm_pos_embed = lvl_pos_embed_flatten[
-                level_start_index[0]:level_start_index[1], :, :]
+                level_start_index[0]:level_start_index[1], :, :]  # [h1 * w1, bs, 256]
             hm_mask = mask_flatten[
-                :, level_start_index[0]:level_start_index[1]]
+                :, level_start_index[0]:level_start_index[1]]  # [bs, h1 * w1]
             hm_reference_points = reference_points[
-                :, level_start_index[0]:level_start_index[1], [0], :]
-            hm_memory = hm_memory.permute(1, 0, 2)
-            hm_memory = self.hm_encoder(
+                :, level_start_index[0]:level_start_index[1], [0], :]  # [bs, h1 * w1, bs, 2]
+            hm_memory = hm_memory.permute(1, 0, 2) # [h1 * w1, bs, 256]
+            hm_memory = self.hm_encoder(  # [h1 * w1, 1, 256]
                 query=hm_memory,
                 key=None,
                 value=None,
@@ -853,9 +853,9 @@ class PETRTransformer(Transformer):
                 level_start_index=level_start_index[0],
                 valid_ratios=valid_ratios[:, [0], :],
                 **kwargs)
-            hm_memory = hm_memory.permute(1, 0, 2).reshape(bs,
+            hm_memory = hm_memory.permute(1, 0, 2).reshape(bs,  # [bs, h1, w1, 256]
                 spatial_shapes[0, 0], spatial_shapes[0, 1], -1)
-            hm_proto = (hm_memory, mlvl_masks[0])
+            hm_proto = (hm_memory, mlvl_masks[0])  # tuple
 
         if self.as_two_stage:
             output_memory, output_proposals = \

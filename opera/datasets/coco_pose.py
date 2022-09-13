@@ -201,7 +201,7 @@ class CocoPoseDataset(CocoDataset):
             mmcv.dump(json_results, result_files['bbox'])
         elif isinstance(results[0], tuple):
             if isinstance(results[0][-1][0],
-                          np.ndarray) and results[0][-1][0].ndim == 3:
+                            np.ndarray) and results[0][-1][0].ndim == 3:
                 json_results = self._kpt2json(results)
                 result_files['bbox'] = f'{outfile_prefix}.bbox.json'
                 result_files['proposal'] = f'{outfile_prefix}.bbox.json'

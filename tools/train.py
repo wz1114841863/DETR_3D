@@ -109,7 +109,6 @@ def main():
     args = parse_args()
 
     cfg = Config.fromfile(args.config)
-    import pdb; pdb.set_trace()
     # replace the ${key} with the value of cfg.key
     cfg = replace_cfg_vals(cfg)
 
