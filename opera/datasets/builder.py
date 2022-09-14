@@ -78,7 +78,7 @@ def build_dataset(cfg, default_args=None):
         cp_cfg.pop('type')
         dataset = MultiImageMixDataset(**cp_cfg)
     elif isinstance(cfg.get('ann_file'), (list, tuple)):
-        dataset = _concat_dataset(cfg, default_args)
+        dataset = _concat_dataset(cfg, default_args)  # 加载多个数据集
     else:
         dataset = build_from_cfg(cfg, DATASETS, default_args)  # test dataset
 

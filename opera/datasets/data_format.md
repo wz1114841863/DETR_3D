@@ -27,19 +27,19 @@ Our json is organized as follows:
 
 ```'bodys
 xxx.json
-{ "root":
+[ "root":
   # image 0  
-  [     
+  {    
     "img_height"   : int,  
     "img_width"    : int,  
     "img_paths"    : "images/path/xxxxxx.jpg",  
     "dataset"      : str,  # dataset name 
     "isValidation" : 0 for train, 1 for test  
     "bodys"        : nested list, N x J x 11
-  ],  
-  [...],  # image 1 
-  [...],  # image 2
-}  
+  },  
+  {...},  # image 1 
+  {...},  # image 2
+]  
 
 
 For "bodys": 

@@ -8,3 +8,7 @@ work_dirs
 .ssh
 
 checkpoint
+
+data_settings.py
+ImageAugmentation.py
+representation.py
