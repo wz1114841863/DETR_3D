@@ -1,5 +1,6 @@
 # Document function description
 #   模仿SMAP的数据格式，加载已经修改格式之后的COCO和MuCo数据集。
+import warnings
 from mmdet.datasets import CustomDataset
 import mmcv
 import numpy as np
@@ -49,7 +50,7 @@ class JointDataset(CustomDataset):
                     *args,
                     **kwargs):
         super(JointDataset, self).__init__(*args, **kwargs)
-        
+    
     def load_annotations(self, ann_file):
         """加载注释文件, 注意这里使用的注释文件为SMAP提出的注释格式
         Args:
@@ -76,18 +77,19 @@ class JointDataset(CustomDataset):
         Returns:
             list[int]: 图片中包含的class
         """
-        return self.data_infos[idx]
+        return self.data_infos[idx]['cam_id']
     
     def prepare_train_img(self, idx):
         """获取管道后的训练数据和注释文件
         Args:
             idx (int): 数据索引
-        
+        anno_info :['dataset', 'img_paths', 'img_width', 'img_height', 
+            'image_id', 'cam_id', 'bodys', 'bboxs', 'num_keypoints', 
+            'iscrowd', 'segmentation', 'isValidation'])
         Returns:
             dict: 处理后的训练数据和注释文件。
         """
-        
-        ann_info = self.get_ann_info(idx=idx)
+        ann_info = self.get_ann_info(idx) 
         results = dict(ann_info=ann_info)
         self.pre_pipeline(results=results)
         return self.pipeline(results)
@@ -99,20 +101,57 @@ class JointDataset(CustomDataset):
         results['proposal_file'] = self.proposal_file
         results['bbox_fields'] = []
         results['mask_fields'] = []
-        results['seg_fields'] = []
         results['keypoint_fields'] = []
-        results['area_fields'] = []
     
-    def get_anno(sefl, data):
-        anno = dict()
-        anno['dataset'] = data['dataset'].upper()
-        anno['img_height'] = int(data['img_height'])
-        anno['img_width'] = int(data['img_width'])
-        anno['isValidation'] = data['isValidation']
-        anno['bodys'] = np.asarray(data['bodys'])
-        anno['center'] = np.array([anno['img_width'] // 2, anno['img_height'] // 2])
-        return anno
+    def __getitem__(self, idx):
+        """Get training/test data after pipeline.
+
+        Args:
+            idx (int): Index of data.
+
+        Returns:
+            dict:
+                "meta_data":
+                    'filename', 'ori_filename', 'ori_shape',
+                    'img_shape', 'pad_shape', 'scale_factor', 
+                    'flip', 'flip_direction', 'img_norm_cfg'
+                "img":
+                "gt_bbox":
+                "gt_keypoints":
+                "ann_info":
+                "dataset":
+        """
+        if self.test_mode:
+            return self.prepare_test_img(idx)
+        while True:
+            data = self.prepare_train_img(idx)
+            if data is None:
+                idx = self._rand_another(idx)
+                continue
+            return data
+        
+    def _filter_imgs(self, min_size=32):
+        # if self.filter_empty_gt:
+        #     warnings.warn(
+        #         'CustomDataset does not support filtering empty gt images.')
+        valid_inds = []
+        for i, img_info in enumerate(self.data_infos):
+            if min(img_info['img_width'], img_info['img_height']) >= min_size:
+                valid_inds.append(i)
+        return valid_inds
+
+    def _set_group_flag(self):
+        self.flag = np.zeros(len(self), dtype=np.uint8)
+        for i in range(len(self)):
+            img_info = self.data_infos[i]
+            if img_info['img_width'] / img_info['img_height'] > 1:
+                self.flag[i] = 1
     
+    def __repr__(self):
+        dataset_type = 'Test' if self.test_mode else 'Train'
+        result = (f'\n{self.__class__.__name__} {dataset_type} dataset '
+                    f'with number of images {len(self)}, \n')
+        return result
 if __name__ == '__main__':
     pass
 

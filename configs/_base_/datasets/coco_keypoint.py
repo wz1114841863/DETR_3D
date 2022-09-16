@@ -64,10 +64,10 @@ train_pipeline = [
         ]),
     dict(type='mmdet.Normalize', **img_norm_cfg),
     dict(type='mmdet.Pad', size_divisor=1),
-    dict(type='opera.FormatBundle',
-            extra_keys=['keypoints', 'bboxs']),
+    dict(type='opera.DefaultFormatBundle',
+            extra_keys=['gt_keypoints', 'gt_areas']),
     dict(type='mmdet.Collect',
-            keys=['img', 'bboxes', 'gt_keypoints', 'ann_info', 'dataset']),
+            keys=['img', 'gt_bboxes', 'gt_labels', 'gt_keypoints', 'gt_areas']),
 ]
 
 # test_pipeline, NOTE the Pad's size_divisor is different from the default

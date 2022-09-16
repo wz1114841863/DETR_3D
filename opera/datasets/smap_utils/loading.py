@@ -27,8 +27,12 @@ class LoadImgFromFile:
         存在两种情况：
             COCO:
             MuCo:
-        Args:
+        Return:
             results (dict): JointDatase 传递的字典。
+            ['ann_info', 'img_prefix', 'seg_prefix', 
+            'proposal_file', 'bbox_fields', 'mask_fields', 
+            'keypoint_fields', 'filename', 'ori_filename', 'img', 
+            'img_shape', 'ori_shape', 'img_fields']
         """
         if self.file_client is None:
             self.file_client = mmcv.FileClient(**self.file_client_args)
@@ -48,7 +52,7 @@ class LoadImgFromFile:
             img = img.astype(np.float32)
         
         results['filename'] = filepath
-        results['ori_filename'] = results['ann_info']['filename']
+        results['ori_filename'] = results['ann_info']['img_paths']
         results['img'] = img
         results['img_shape'] = img.shape
         results['ori_shape'] = img.shape
@@ -65,42 +69,67 @@ class LoadImgFromFile:
 
 
 @PIPELINES.register_module()
-class LoadAnnotations(MMDetLoadAnnotations):
-    """对注释文件进行进一步解析
-    
+class LoadAnnosFromFile(MMDetLoadAnnotations):
+    """对注释文件进行进一步解析,转换格式，添加字段。
     Args:
         with_dataset:(bool):
         with_bbox:(bool):
+    Return:
+        add new keys:
+            ['gt_bboxs', 'dataset', 'gt_keypoints', 'keypoints_fields', ['gt_keypoints_flag']]
     """
-    def __init__(self, with_dataset=True, with_keypoints=True,
-                    with_bbox=True, with_label=False, with_mask=False, 
-                    with_seg=False, poly2mask=False, denorm_bbox=False, file_client_args=dict(backend='disk')):
-        super().__init__(with_bbox, with_label, with_mask, with_seg, poly2mask, 
-                            denorm_bbox, file_client_args)
+    def __init__(self, 
+                *args,
+                with_dataset=True, 
+                with_keypoints=True,
+                **kwargs):
+        super(LoadAnnosFromFile, self).__init__(*args, **kwargs)
         self.with_dataset = with_dataset
         self.with_keypoints = with_keypoints
     
     def _load_bboxes(self, results):
-        ann_info = results['ann_info']
-        results['bboxs'] = ann_info['bboxs'].copy()
-        # 修改bbox，coco中的格式为：[x1, y1, w, h]
+        bboxs = results['ann_info']['bboxs'].copy()
+        bboxs = np.asarray(bboxs)
+        # 修改bboxs，coco中的格式为：[x1, y1, w, h]
         # 注意这里仅修改了results['bboxs']
-        results['bboxs'][:, 2] += results['bboxs'][:, 0]
-        results['bboxs'][:, 3] += results['bboxs'][:, 1]
-        results['bbox_fields'] = ['bboxs']
+        bboxs[:, 2] += bboxs[:, 0]
+        bboxs[:, 3] += bboxs[:, 1]
+        # 确保bbox中的坐标为[left_top_x, left_top_y, right_bottom_x, right_bottom_y]
+        for i in range(len(bboxs)):
+            left_top_x = min(bboxs[i][0], bboxs[i][2])
+            left_top_y = min(bboxs[i][1], bboxs[i][3])
+            right_bottom_x = max(bboxs[i][0], bboxs[i][2])
+            right_bottom_y = max(bboxs[i][1], bboxs[i][3])
+            bbox = [left_top_x, left_top_y, right_bottom_x, right_bottom_y]
+            bboxs[i] = bbox
+        results['gt_bboxs'] = bboxs
+        results['bbox_fields'] = ['gt_bboxs']
         return results
     
     def _load_dataset(self, results):
-        results['dataset'] = results['ann_info']['dataset'].copy()
+        results['dataset'] = results['ann_info']['dataset'].upper()
         return results
     
     def _load_keypoints(self, results):
-        results['keypoints'] = results['ann_info']['bodys'].copy()
-        results['keypoints_fields'] = ['keypoints']
+        """加载关键点的同时添加关键点标志位
+        确保原来无效的坐标点，经过数据增强后依旧是(0, 0, ...)
+        """
+        # 加载关键点数据
+        keypoints = results['ann_info']['bodys'].copy()  # [N, J, 11]
+        results['gt_keypoints'] = np.asarray(keypoints)
+        results['keypoint_fields'] = ['gt_keypoints']
+        # 添加keyPoints标志位
+        keypoints_flag = np.ones((len(keypoints), 15, 1), dtype=int)
+        for n in range(len(keypoints)):
+            for j in range(15):
+                if keypoints[n][j][0] == 0.0 or keypoints[n][j][1] == 0.0:
+                    keypoints_flag[n][j][0] = 0
+                    
+        results['gt_keypoints_flag'] = keypoints_flag
         return results
     
     def __call__(self, results):
-        results = super(LoadAnnotations, self).__call__(results)
+        results = super(LoadAnnosFromFile, self).__call__(results)
         
         if results is None:
             return None
@@ -114,6 +143,7 @@ class LoadAnnotations(MMDetLoadAnnotations):
         return results
     
     def __repr__(self):
-        repr_str = super(LoadAnnotations, self).__repr__()[:-1] + ', '
-        repr_str += f'with_keypoint={self.with_dataset}, '
+        repr_str = super(LoadAnnosFromFile, self).__repr__()[:-1] + ', '
+        repr_str += f'with_dataset={self.with_dataset}, '
+        repr_str += f'with_keypoint={self.with_keypoints}, '
         return repr_str

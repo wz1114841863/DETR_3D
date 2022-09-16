@@ -1,3 +1,6 @@
+# Document function description
+#   用来查看json文件中具体的数据格式。
+
 import json
 import cv2 as cv
 

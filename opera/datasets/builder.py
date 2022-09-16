@@ -80,7 +80,7 @@ def build_dataset(cfg, default_args=None):
     elif isinstance(cfg.get('ann_file'), (list, tuple)):
         dataset = _concat_dataset(cfg, default_args)  # 加载多个数据集
     else:
-        dataset = build_from_cfg(cfg, DATASETS, default_args)  # test dataset
+        dataset = build_from_cfg(cfg, DATASETS, default_args)  # 加载单个数据集
 
     return dataset
 
@@ -199,3 +199,7 @@ def worker_init_fn(worker_id, num_workers, rank, seed):
     worker_seed = num_workers * rank + worker_id + seed
     np.random.seed(worker_seed)
     random.seed(worker_seed)
+
+
+if __name__ == '__main__':
+    print(PIPELINES)

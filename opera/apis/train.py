@@ -141,7 +141,8 @@ def train_model(model,
         dist=distributed,
         seed=cfg.seed,
         runner_type=runner_type,
-        persistent_workers=False)
+        persistent_workers=False
+    )
 
     train_loader_cfg = {
         **train_dataloader_default_args,

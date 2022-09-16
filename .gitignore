@@ -9,6 +9,10 @@ work_dirs
 
 checkpoint
 
+*.jpg
+*.png
+*.gif
+
 data_settings.py
 ImageAugmentation.py
 representation.py

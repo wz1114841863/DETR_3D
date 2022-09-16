@@ -10,7 +10,6 @@ from ..builder import PIPELINES
 class FormatBundle(MMDetDefaultFormatBundle):
     """在默认的format bundle中添加一些额外操作
     
-
     Args:
         MMDetDefaultFormatBundle (_type_): _description_
     """
@@ -23,9 +22,16 @@ class FormatBundle(MMDetDefaultFormatBundle):
         
     def __call__(self, results):
         """
-
         Args:
             results (_type_): _description_
+            ['ann_info', 'img_prefix', 'seg_prefix', 
+            'proposal_file', 'bbox_fields', 'mask_fields', 
+            'keypoint_fields', 'filename', 'ori_filename', 
+            'img', 'img_shape', 'ori_shape', 'img_fields', 
+            'gt_bboxs', 'dataset', 'gt_keypoints', 'flip', 
+            'flip_direction', 'scale_idx', 'keep_ratio', 
+            'scale', 'scale_factor', 'img_norm_cfg', 
+            'pad_shape', 'pad_fixed_size', 'pad_size_divisor'
         """
         results = super(FormatBundle, self).__call__(results)
         assert isinstance(self.extra_keys, (list, tuple))

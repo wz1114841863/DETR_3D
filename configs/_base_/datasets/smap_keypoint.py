@@ -9,12 +9,13 @@ img_norm_cfg = dict(
 
 # train pipeline
 train_pipeline = [
-    dict(type='opera.LoadImageFromFile', to_float32=True),
+    dict(type='opera.LoadImgFromFile', to_float32=True),
     dict(
-        type='opera.LoadSmapAnnotations', 
+        type='opera.LoadAnnosFromFile', 
         with_dataset=True,
         with_bbox=True,
         with_keypoints=True,
+        with_label=False,
     ),
     dict(
         type='mmdet.PhotoMetricDistortion',
@@ -23,15 +24,36 @@ train_pipeline = [
         saturation_range=(0.5, 1.5),
         hue_delta=18
     ),
+    # dict(
+    #     type='opera.VisImg',
+    #     draw_bbox=True,
+    #     draw_keypoints=True,
+    #     img_prefix='before_filp_00',
+    #     img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
+    # ),
     dict(
         type='opera.AugRandomFlip',
-        flip_ratio=0.5,
+        flip_ratio=1.0,  # 测试
     ),
+    # dict(
+    #     type='opera.VisImg',
+    #     draw_bbox=True,
+    #     draw_keypoints=True,
+    #     img_prefix='before_Random_00',
+    #     img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
+    # ),
     dict(
         type='opera.AugRandomRotate',
         max_rotate_degree=30,
-        rotate_prob=0.5,
+        rotate_prob=1.0,  # 测试
     ),
+    # dict(
+    #     type='opera.VisImg',
+    #     draw_bbox=True,
+    #     draw_keypoints=True,
+    #     img_prefix='before_AugMent_00',
+    #     img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
+    # ),
     dict(
         type='mmdet.AutoAugment',
         policies=[
@@ -64,12 +86,19 @@ train_pipeline = [
             ]
         ]
     ),
+    dict(
+        type='opera.VisImg',
+        draw_bbox=True,
+        draw_keypoints=True,
+        img_prefix='before_Normalize_00',
+        img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
+    ),
     dict(type='mmdet.Normalize', **img_norm_cfg),
-    dict(type='mmdet.Pad', size_divisor=1),
-    dict(type='opera.DefaultFormatBundle',
-            extra_keys=['gt_keypoints', 'gt_areas']),
+    dict(type='mmdet.Pad', size_divisor=1),  # 使用0填充图像边缘
+    dict(type='opera.FormatBundle',
+            extra_keys=['gt_keypoints', 'gt_bboxs']),
     dict(type='mmdet.Collect',
-            keys=['img', 'gt_bboxes', 'gt_labels', 'gt_keypoints', 'gt_areas']),
+            keys=['img', 'gt_bboxs', 'gt_keypoints', 'ann_info', 'dataset']),
 ]
 
 test_pipeline = [
@@ -88,14 +117,14 @@ test_pipeline = [
     ])
 ]
 
+
 data = dict(
     samples_per_gpu=1,
     workers_per_gpu=1,
     train=dict(
         type=dataset_type,
-        ann_file=[data_coco_root + 'annotations/coco_keypoints_train2017.json',
-                    data_muco_root + 'annotations/MuCo.json'],
-        img_prefix=[data_coco_root, data_muco_root],
+        ann_file=data_coco_root + 'annotations/coco_keypoints_train2017.json',
+        img_prefix=data_coco_root,
         pipeline=train_pipeline
     ),
     val=dict(
@@ -108,5 +137,26 @@ data = dict(
         pipeline=test_pipeline,
     )
 )
+
+# data = dict(
+#     samples_per_gpu=1,
+#     workers_per_gpu=1,
+#     train=dict(
+#         type=dataset_type,
+#         ann_file=[data_coco_root + 'annotations/coco_keypoints_train2017.json',
+#                     data_muco_root + 'annotations/MuCo.json'],
+#         img_prefix=[data_coco_root, data_muco_root],
+#         pipeline=train_pipeline
+#     ),
+#     val=dict(
+#         type=dataset_type,
+#         ann_file=[],
+#         pipeline=test_pipeline
+#     ),
+#     test=dict(
+#         ann_file=[],
+#         pipeline=test_pipeline,
+#     )
+# )
 
 evaluation = dict(interval=1, metric='keypoints')
