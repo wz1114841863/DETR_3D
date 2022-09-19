@@ -37,19 +37,19 @@ class KptL1Cost(object):
         """
         kpt_cost = []
         for i in range(len(gt_keypoints)):
-            kpt_pred_tmp = kpt_pred.clone()
-            valid_flag = valid_kpt_flag[i] > 0
+            kpt_pred_tmp = kpt_pred.clone()  # [300 ,17, 2]
+            valid_flag = valid_kpt_flag[i] > 0  # [17, ]
             valid_flag_expand = valid_flag.unsqueeze(0).unsqueeze(
-                -1).expand_as(kpt_pred_tmp)
-            kpt_pred_tmp[~valid_flag_expand] = 0
-            cost = torch.cdist(
-                kpt_pred_tmp.reshape(kpt_pred_tmp.shape[0], -1),
-                gt_keypoints[i].reshape(-1).unsqueeze(0),
+                -1).expand_as(kpt_pred_tmp)  # [300 ,17, 2]
+            kpt_pred_tmp[~valid_flag_expand] = 0  # 去除无效关键点
+            cost = torch.cdist(  # [300, 1]
+                kpt_pred_tmp.reshape(kpt_pred_tmp.shape[0], -1),  # [300, 34]
+                gt_keypoints[i].reshape(-1).unsqueeze(0),  # [1, 34]
                 p=1)
-            avg_factor = torch.clamp(valid_flag.float().sum() * 2, 1.0)
-            cost = cost / avg_factor
+            avg_factor = torch.clamp(valid_flag.float().sum() * 2, 1.0)  # float
+            cost = cost / avg_factor  # [300, 1],
             kpt_cost.append(cost)
-        kpt_cost = torch.cat(kpt_cost, dim=1)
+        kpt_cost = torch.cat(kpt_cost, dim=1)  # [300, 5]
         return kpt_cost * self.weight
 
 
@@ -113,19 +113,19 @@ class OksCost(object):
         for i in range(len(gt_keypoints)):
             squared_distance = \
                 (kpt_pred[:, :, 0] - gt_keypoints[i, :, 0].unsqueeze(0)) ** 2 + \
-                (kpt_pred[:, :, 1] - gt_keypoints[i, :, 1].unsqueeze(0)) ** 2
-            vis_flag = (valid_kpt_flag[i] > 0).int()
-            vis_ind = vis_flag.nonzero(as_tuple=False)[:, 0]
+                (kpt_pred[:, :, 1] - gt_keypoints[i, :, 1].unsqueeze(0)) ** 2  # [300, 17]
+            vis_flag = (valid_kpt_flag[i] > 0).int()  # [17, ]
+            vis_ind = vis_flag.nonzero(as_tuple=False)[:, 0]  # valid_kpt_index
             num_vis_kpt = vis_ind.shape[0]
             assert num_vis_kpt > 0
             area = gt_areas[i]
 
-            squared_distance0 = squared_distance / (area * variances * 2)
-            squared_distance0 = squared_distance0[:, vis_ind]
+            squared_distance0 = squared_distance / (area * variances * 2)  # [300, 17]
+            squared_distance0 = squared_distance0[:, vis_ind]  # [300, valid_kpt_index]
             squared_distance1 = torch.exp(-squared_distance0).sum(
-                dim=1, keepdim=True)
-            oks = squared_distance1 / num_vis_kpt
+                dim=1, keepdim=True)  # [300, 1]
+            oks = squared_distance1 / num_vis_kpt  # [300, 1]
             # The 1 is a constant that doesn't change the matching, so omitted.
             oks_cost.append(-oks)
-        oks_cost = torch.cat(oks_cost, dim=1)
+        oks_cost = torch.cat(oks_cost, dim=1)  # [300, num_gts]
         return oks_cost * self.weight

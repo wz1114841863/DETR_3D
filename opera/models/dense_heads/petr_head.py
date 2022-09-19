@@ -234,22 +234,22 @@ class PETRHead(AnchorFreeHead):
                 `None` would be returned.
         """
         batch_size = mlvl_feats[0].size(0)
-        input_img_h, input_img_w = img_metas[0]['batch_input_shape']  # (1241, 800)
-        img_masks = mlvl_feats[0].new_ones(
-            (batch_size, input_img_h, input_img_w))  # img_masks: [bs, 1241, 800]
+        input_img_h, input_img_w = img_metas[0]['batch_input_shape']  # (max_H, max_w)
+        img_masks = mlvl_feats[0].new_ones( 
+            (batch_size, input_img_h, input_img_w))  # 创建img_masks, img_masks: [bs, max_H, max_w] 
         
         for img_id in range(batch_size):
-            img_h, img_w, _ = img_metas[img_id]['img_shape']  # (1241, 800)
-            img_masks[img_id, :img_h, :img_w] = 0
+            img_h, img_w, _ = img_metas[img_id]['img_shape']  # (img_h, img_w)
+            img_masks[img_id, :img_h, :img_w] = 0  # 对collate函数填充的边缘用mask进行标记。
 
-        mlvl_masks = []
-        mlvl_positional_encodings = []
+        mlvl_masks = []  # 针对特征图对mask进行尺度变换，与特征图的大小一一对应。
+        mlvl_positional_encodings = []  # 对每个尺度的特征图上的每个点添加一个embedding.
         for feat in mlvl_feats:
             mlvl_masks.append(
-                F.interpountiullate(img_masks[None],  # 扩充维度
+                F.interpolate(img_masks[None],  # 扩充维度
                                 size=feat.shape[-2:]).to(torch.bool).squeeze(0))
             mlvl_positional_encodings.append(
-                self.positional_encoding(mlvl_masks[-1]))
+                self.positional_encoding(mlvl_masks[-1]))  # ./mmdet/models/utils/positional_encoding.py
 
         query_embeds = self.query_embedding.weight  # (300, 512)
         hs, init_reference, inter_references, \
@@ -260,28 +260,29 @@ class PETRHead(AnchorFreeHead):
                     query_embeds,
                     mlvl_positional_encodings,
                     kpt_branches=self.kpt_branches \
-                        if self.with_kpt_refine else None,  # noqa:E501
+                        if self.with_kpt_refine else None,
                     cls_branches=self.cls_branches \
-                        if self.as_two_stage else None  # noqa:E501
-            )  # transformer.forward() 返回的结果
-        # hs: (3, 300, 1, 256), init_reference: (1, 300, 34), inter_references: [3, 1, 300, 34]
-        # enc_outputs_class: (1, 20735, 1), enc_outputs_kpt: (1, 20735, 34), hm_proto: None
-        # memory: (20735, 1, 256)
-        hs = hs.permute(0, 2, 1, 3)  # (3, 1, 300, 256)
+                        if self.as_two_stage else None 
+            )  # PETRTransformer.forward() 返回的结果
+        # hs: [num_dec, 300, bs, 256], init_reference: [bs, 300, 34], inter_references: [num_dec, bs, 300, 34]
+        # enc_outputs_class: [bs, sum(h*w), 1], enc_outputs_kpt: [bs, sum(h*w), 34], hm_proto: (hm_memory, mlvl_masks[0])
+        # memory: [sum(h*w), bs, 256]
+        hs = hs.permute(0, 2, 1, 3)  # [num_dec, bs, 300, 256]
         outputs_classes = []  # len = 3, (1, 300, 1)
         outputs_kpts = []  # len = 3, (1, 300, 34)
 
         for lvl in range(hs.shape[0]):  # 3
             if lvl == 0:
-                reference = init_reference  # [1, 300, 34]
+                reference = init_reference  # [bs, 300, 34]
             else:
-                reference = inter_references[lvl - 1]  # [1, 300, 34]
-            reference = inverse_sigmoid(reference)  # [1, 300, 34]
-            outputs_class = self.cls_branches[lvl](hs[lvl])  # [1, 300, 1]
-            tmp_kpt = self.kpt_branches[lvl](hs[lvl])  # [1, 300, 34]
+                reference = inter_references[lvl - 1]  # [bs, 300, 34]
+            reference = inverse_sigmoid(reference)  # [bs, 300, 34]
+            outputs_class = self.cls_branches[lvl](hs[lvl])  # [bs, 300, 1]
+            tmp_kpt = self.kpt_branches[lvl](hs[lvl])  # [bs, 300, 34]
             assert reference.shape[-1] == self.num_keypoints * 2
-            tmp_kpt += reference  # [1, 300, 34]
-            outputs_kpt = tmp_kpt.sigmoid()  # [1, 300, 34]
+            tmp_kpt += reference  # [bs, 300, 34], inference points + offset
+            outputs_kpt = tmp_kpt.sigmoid()  # [bs, 300, 34]
+            
             outputs_classes.append(outputs_class)
             outputs_kpts.append(outputs_kpt)
             
@@ -290,8 +291,8 @@ class PETRHead(AnchorFreeHead):
 
         if hm_proto is not None:
             # get heatmap prediction (training phase)
-            hm_memory, hm_mask = hm_proto
-            hm_pred = self.fc_hm(hm_memory)
+            hm_memory, hm_mask = hm_proto  # [bs, h1, w1, 256], [bs, h1, w1]
+            hm_pred = self.fc_hm(hm_memory)  # [bs, h1, w1, 17]
             hm_proto = (hm_pred.permute(0, 3, 1, 2), hm_mask)
 
         if self.as_two_stage:
@@ -306,9 +307,11 @@ class PETRHead(AnchorFreeHead):
         """Forward function.
 
         Args:
+            memory: output of encoder.  # [sum(h*w), bs, 256]
             mlvl_masks (tuple[Tensor]): The key_padding_mask from
                 different level used for encoder and decoder,
-                each is a 3D-tensor with shape (bs, H, W).
+                each is a 3D-tensor with shape (bs, H, W).  # len=4, [bs, h, w]
+            refine_targets:
             losses (dict[str, Tensor]): A dictionary of loss components.
             img_metas (list[dict]): List of image information.
 
@@ -316,37 +319,39 @@ class PETRHead(AnchorFreeHead):
             dict[str, Tensor]: A dictionary of loss components.
         """
         kpt_preds, kpt_targets, area_targets, kpt_weights = refine_targets  # 打包的数据
-        pos_inds = kpt_weights.sum(-1) > 0
+        # [300, 34], [300, 34], [300, ], [300, 34]
+        pos_inds = kpt_weights.sum(-1) > 0  # [300]
+        import pdb;pdb.set_trace()
         if pos_inds.sum() == 0:
             pos_kpt_preds = torch.zeros_like(kpt_preds[:1])
             pos_img_inds = kpt_preds.new_zeros([1], dtype=torch.int64)
         else:
-            pos_kpt_preds = kpt_preds[pos_inds]
+            pos_kpt_preds = kpt_preds[pos_inds]  # [num_gts, 34]
             pos_img_inds = (pos_inds.nonzero() / self.num_query).squeeze(1).to(
-                torch.int64)  # (100)
+                torch.int64)  # index of img in batch_size, [num_gts, ], 
             
         hs, init_reference, inter_references = self.transformer.forward_refine(
             mlvl_masks,
             memory,
-            pos_kpt_preds.detach(),  # 阻断反向传播
+            pos_kpt_preds.detach(),
             pos_img_inds,
             kpt_branches=self.refine_kpt_branches if self.with_kpt_refine else None,  # noqa:E501
-        )
-        hs = hs.permute(0, 2, 1, 3)  # [2, 100, 17, 256]
+        )  # init_reference: [num_gts, 17, 2], inter_references: [nun_dec, num_gts, 17, 2]
+        hs = hs.permute(0, 2, 1, 3)  # [num_dec, num_gts, 17, 256]
         outputs_kpts = []
 
         for lvl in range(hs.shape[0]):  # 2
             if lvl == 0:
-                reference = init_reference  # [100, 17, 2]
+                reference = init_reference  # [num_gts, 17, 2]
             else:
                 reference = inter_references[lvl - 1]
-            reference = inverse_sigmoid(reference)  # [100, 17, 2]
-            tmp_kpt = self.refine_kpt_branches[lvl](hs[lvl])  # [100, 17, 2]
+            reference = inverse_sigmoid(reference)  # [num_gts, 17, 2]
+            tmp_kpt = self.refine_kpt_branches[lvl](hs[lvl])  # [num_gts, 17, 2]
             assert reference.shape[-1] == 2
-            tmp_kpt += reference
-            outputs_kpt = tmp_kpt.sigmoid()  # [100, 17, 2]
+            tmp_kpt += reference  # reference points + 预测的偏移量
+            outputs_kpt = tmp_kpt.sigmoid()  # [num_gts, 17, 2]
             outputs_kpts.append(outputs_kpt)
-        outputs_kpts = torch.stack(outputs_kpts)  # [2, 100, 17, 2]
+        outputs_kpts = torch.stack(outputs_kpts)  # [2, num_gts, 17, 2]
 
         if not self.training:
             return outputs_kpts
@@ -355,22 +360,22 @@ class PETRHead(AnchorFreeHead):
         factors = []
         for img_id in range(batch_size):
             img_h, img_w, _ = img_metas[img_id]['img_shape']
-            factor = mlvl_masks[0].new_tensor(
+            factor = mlvl_masks[0].new_tensor(  # [300, 4]
                 [img_w, img_h, img_w, img_h],
                 dtype=torch.float32).unsqueeze(0).repeat(self.num_query, 1)
             factors.append(factor)
         factors = torch.cat(factors, 0)
-        factors = factors[pos_inds][:, :2].repeat(1, kpt_preds.shape[-1] // 2)
+        factors = factors[pos_inds][:, :2].repeat(1, kpt_preds.shape[-1] // 2)  # [num_gts, 34]
 
         num_valid_kpt = torch.clamp(
-            reduce_mean(kpt_weights.sum()), min=1).item()
-        num_total_pos = kpt_weights.new_tensor([outputs_kpts.size(1)])
+            reduce_mean(kpt_weights.sum()), min=1).item()  # 有效的关键点个数 * 2,（x, y)
+        num_total_pos = kpt_weights.new_tensor([outputs_kpts.size(1)])  # num_gts
         num_total_pos = torch.clamp(reduce_mean(num_total_pos), min=1).item()
-        pos_kpt_weights = kpt_weights[pos_inds]
-        pos_kpt_targets = kpt_targets[pos_inds]
-        pos_kpt_targets_scaled = pos_kpt_targets * factors
-        pos_areas = area_targets[pos_inds]
-        pos_valid = kpt_weights[pos_inds, 0::2]
+        pos_kpt_weights = kpt_weights[pos_inds]  # [num_gts, 34]
+        pos_kpt_targets = kpt_targets[pos_inds]  # [num_gts, 34]
+        pos_kpt_targets_scaled = pos_kpt_targets * factors  # [num_gts, 34]
+        pos_areas = area_targets[pos_inds]  # [num_gts, ]
+        pos_valid = kpt_weights[pos_inds, 0::2]  # [num_gts, 17], vis_labels
         for i, kpt_refine_preds in enumerate(outputs_kpts):
             if pos_inds.sum() == 0:
                 loss_kpt = loss_oks = kpt_refine_preds.sum() * 0
@@ -379,17 +384,17 @@ class PETRHead(AnchorFreeHead):
                 continue
             # kpt L1 Loss
             pos_refine_preds = kpt_refine_preds.reshape(
-                kpt_refine_preds.size(0), -1)
-            loss_kpt = self.loss_kpt_refine(
+                kpt_refine_preds.size(0), -1)  # [num_gts, 34]
+            loss_kpt = self.loss_kpt_refine(  # float
                 pos_refine_preds,
                 pos_kpt_targets,
                 pos_kpt_weights,
                 avg_factor=num_valid_kpt)
             losses[f'd{i}.loss_kpt_refine'] = loss_kpt
             # kpt oks loss
-            pos_refine_preds_scaled = pos_refine_preds * factors
-            assert (pos_areas > 0).all()
-            loss_oks = self.loss_oks_refine(
+            pos_refine_preds_scaled = pos_refine_preds * factors  # [num_gts, 34]
+            assert (pos_areas > 0).all()  
+            loss_oks = self.loss_oks_refine(  # float
                 pos_refine_preds_scaled,
                 pos_kpt_targets_scaled,
                 pos_valid,
@@ -408,7 +413,7 @@ class PETRHead(AnchorFreeHead):
                         gt_areas=None,
                         gt_bboxes_ignore=None,
                         proposal_cfg=None,
-                      **kwargs):
+                        **kwargs):
         """Forward function for training mode.
 
         Args:
@@ -431,9 +436,8 @@ class PETRHead(AnchorFreeHead):
         Returns:
             dict[str, Tensor]: A dictionary of loss components.
         """
-        import pdb;pdb.set_trace()
         assert proposal_cfg is None, '"proposal_cfg" must be None'
-        outs = self(x, img_metas)
+        outs = self.forward(x, img_metas)
         memory, mlvl_masks = outs[-2:]
         outs = outs[:-2]
         if gt_labels is None:
@@ -467,18 +471,18 @@ class PETRHead(AnchorFreeHead):
         Args:
             all_cls_scores (Tensor): Classification score of all
                 decoder layers, has shape
-                [nb_dec, bs, num_query, cls_out_channels].
+                [nb_dec, bs, num_query, cls_out_channels].  # [3, bs, 300, 1]
             all_kpt_preds (Tensor): Sigmoid regression
                 outputs of all decode layers. Each is a 4D-tensor with
                 normalized coordinate format (x_{i}, y_{i}) and shape
-                [nb_dec, bs, num_query, K*2].
+                [nb_dec, bs, num_query, K*2].  # [3, bs, 300, 34]
             enc_cls_scores (Tensor): Classification scores of
                 points on encode feature map, has shape
                 (N, h*w, num_classes). Only be passed when as_two_stage is
-                True, otherwise is None.
+                True, otherwise is None.  # [bs, sum(h*w), 1]
             enc_kpt_preds (Tensor): Regression results of each points
                 on the encode feature map, has shape (N, h*w, K*2). Only be
-                passed when as_two_stage is True, otherwise is None.
+                passed when as_two_stage is True, otherwise is None. # [bs, sum(h*w), 34]
             gt_bboxes_list (list[Tensor]): Ground truth bboxes for each image
                 with shape (num_gts, 4) in [tl_x, tl_y, br_x, br_y] format.
             gt_labels_list (list[Tensor]): Ground truth class indices for each
@@ -499,7 +503,8 @@ class PETRHead(AnchorFreeHead):
             f'{self.__class__.__name__} only supports ' \
             f'for gt_bboxes_ignore setting to None.'
 
-        num_dec_layers = len(all_cls_scores)
+        num_dec_layers = len(all_cls_scores)  # 3
+        # 将gt_xx复制 nem_dec=3 份，组成一个list。
         all_gt_labels_list = [gt_labels_list for _ in range(num_dec_layers)]
         all_gt_keypoints_list = [
             gt_keypoints_list for _ in range(num_dec_layers)
@@ -512,12 +517,14 @@ class PETRHead(AnchorFreeHead):
                 self.loss_single, all_cls_scores, all_kpt_preds,
                 all_gt_labels_list, all_gt_keypoints_list,
                 all_gt_areas_list, img_metas_list)
-
+        # losses_cls, losses_kpt, losses_oks: list. len=3, list[i]=float
+        # kpt_preds_list, kpt_targets_list, kpt_weights_list: list, len=3, list[i]=[300, 34]
+        # area_targets_list: list, len=3, list[i]=[300, ]
         loss_dict = dict()
         # loss of proposal generated from encode feature map.
         if enc_cls_scores is not None:
             binary_labels_list = [
-                torch.zeros_like(gt_labels_list[i])
+                torch.zeros_like(gt_labels_list[i])  # 
                 for i in range(len(img_metas))
             ]
             enc_loss_cls, enc_losses_kpt = \
@@ -554,17 +561,17 @@ class PETRHead(AnchorFreeHead):
         assert hm_pred.shape[-2:] == hm_mask.shape[-2:]
         num_img, _, h, w = hm_pred.size()
         # placeholder of heatmap target (Gaussian distribution)
-        hm_target = hm_pred.new_zeros(hm_pred.shape)
+        hm_target = hm_pred.new_zeros(hm_pred.shape)  # [bs, 17, h, w]
         for i, (gt_label, gt_bbox, gt_keypoint) in enumerate(
                 zip(gt_labels, gt_bboxes, gt_keypoints)):
             if gt_label.size(0) == 0:
                 continue
             gt_keypoint = gt_keypoint.reshape(gt_keypoint.shape[0], -1,
-                                                3).clone()
-            gt_keypoint[..., :2] /= 8
+                                                3).clone()  # [num_gts, 17, 3]
+            gt_keypoint[..., :2] /= 8  # 特征图是原图的 1 / 8
             assert gt_keypoint[..., 0].max() <= w  # new coordinate system
             assert gt_keypoint[..., 1].max() <= h  # new coordinate system
-            gt_bbox /= 8
+            gt_bbox /= 8  # gt_bbox[x1, y1, x2, y2]
             gt_w = gt_bbox[:, 2] - gt_bbox[:, 0]
             gt_h = gt_bbox[:, 3] - gt_bbox[:, 1]
             for j in range(gt_label.size(0)):
@@ -651,13 +658,13 @@ class PETRHead(AnchorFreeHead):
         for img_meta, kpt_pred in zip(img_metas, kpt_preds):
             img_h, img_w, _ = img_meta['img_shape']
             factor = kpt_pred.new_tensor([img_w, img_h, img_w,
-                                          img_h]).unsqueeze(0).repeat(
-                                              kpt_pred.size(0), 1)
+                                            img_h]).unsqueeze(0).repeat(
+                                                kpt_pred.size(0), 1)  # [300, 4]
             factors.append(factor)
         factors = torch.cat(factors, 0)
 
         # keypoint regression loss
-        kpt_preds = kpt_preds.reshape(-1, kpt_preds.shape[-1])
+        kpt_preds = kpt_preds.reshape(-1, kpt_preds.shape[-1])  # [300, 34]
         num_valid_kpt = torch.clamp(
             reduce_mean(kpt_weights.sum()), min=1).item()
         # assert num_valid_kpt == (kpt_targets>0).sum().item()
@@ -729,22 +736,22 @@ class PETRHead(AnchorFreeHead):
                     images.
         """
         (labels_list, label_weights_list, kpt_targets_list, kpt_weights_list,
-         area_targets_list, pos_inds_list, neg_inds_list) = multi_apply(
-             self._get_target_single, cls_scores_list, kpt_preds_list, 
-             gt_labels_list, gt_keypoints_list, gt_areas_list, img_metas)
-        num_total_pos = sum((inds.numel() for inds in pos_inds_list))
-        num_total_neg = sum((inds.numel() for inds in neg_inds_list))
+            area_targets_list, pos_inds_list, neg_inds_list) = multi_apply(
+                self._get_target_single, cls_scores_list, kpt_preds_list, 
+                gt_labels_list, gt_keypoints_list, gt_areas_list, img_metas)
+        num_total_pos = sum((inds.numel() for inds in pos_inds_list))  # pos 个数
+        num_total_neg = sum((inds.numel() for inds in neg_inds_list))  # neg 个数
         return (labels_list, label_weights_list, kpt_targets_list,
                 kpt_weights_list, area_targets_list, num_total_pos,
                 num_total_neg)
 
     def _get_target_single(self,
-                           cls_score,
-                           kpt_pred,
-                           gt_labels,
-                           gt_keypoints,
-                           gt_areas,
-                           img_meta):
+                            cls_score,
+                            kpt_pred,
+                            gt_labels,
+                            gt_keypoints,
+                            gt_areas,
+                            img_meta):
         """Compute regression and classification targets for one image.
 
         Outputs from a single decoder layer of a single feature level are used.
@@ -779,45 +786,45 @@ class PETRHead(AnchorFreeHead):
         num_bboxes = kpt_pred.size(0)
         # assigner and sampler
         assign_result = self.assigner.assign(cls_score, kpt_pred, gt_labels,
-                                             gt_keypoints, gt_areas, img_meta)
+                                    gt_keypoints, gt_areas, img_meta)
         sampling_result = self.sampler.sample(assign_result, kpt_pred,
-                                              gt_keypoints)
-        pos_inds = sampling_result.pos_inds
-        neg_inds = sampling_result.neg_inds
+                                    gt_keypoints)
+        pos_inds = sampling_result.pos_inds  # [num_gts], index of valid index of pred
+        neg_inds = sampling_result.neg_inds  # [300 - num_gts] index of invalid index of pred
 
         # label targets
         labels = gt_labels.new_full((num_bboxes, ),
                                     self.num_classes,
-                                    dtype=torch.long)
-        labels[pos_inds] = gt_labels[sampling_result.pos_assigned_gt_inds]
-        label_weights = gt_labels.new_ones(num_bboxes)
+                                    dtype=torch.long)  # [300, ]
+        labels[pos_inds] = gt_labels[sampling_result.pos_assigned_gt_inds]  # 对应标签
+        label_weights = gt_labels.new_ones(num_bboxes) 
 
         img_h, img_w, _ = img_meta['img_shape']
 
         # keypoint targets
-        kpt_targets = torch.zeros_like(kpt_pred)
-        kpt_weights = torch.zeros_like(kpt_pred)
+        kpt_targets = torch.zeros_like(kpt_pred)  # [300， 34]
+        kpt_weights = torch.zeros_like(kpt_pred)  # [300， 34] 
         pos_gt_kpts = gt_keypoints[sampling_result.pos_assigned_gt_inds]
         pos_gt_kpts = pos_gt_kpts.reshape(pos_gt_kpts.shape[0],
-                                          pos_gt_kpts.shape[-1] // 3, 3)
-        valid_idx = pos_gt_kpts[:, :, 2] > 0
+                                          pos_gt_kpts.shape[-1] // 3, 3)  # [num_gts, 17, 3]
+        valid_idx = pos_gt_kpts[:, :, 2] > 0  # 有效的关键点索引
         pos_kpt_weights = kpt_weights[pos_inds].reshape(
-            pos_gt_kpts.shape[0], kpt_weights.shape[-1] // 2, 2)
+            pos_gt_kpts.shape[0], kpt_weights.shape[-1] // 2, 2)  # [num_gts, 17, 2]
         pos_kpt_weights[valid_idx] = 1.0
         kpt_weights[pos_inds] = pos_kpt_weights.reshape(
-            pos_kpt_weights.shape[0], kpt_pred.shape[-1])
+            pos_kpt_weights.shape[0], kpt_pred.shape[-1])  # [300, 34]
 
-        factor = kpt_pred.new_tensor([img_w, img_h]).unsqueeze(0)
+        factor = kpt_pred.new_tensor([img_w, img_h]).unsqueeze(0)  # [1, 2]
         pos_gt_kpts_normalized = pos_gt_kpts[..., :2]
         pos_gt_kpts_normalized[..., 0] = pos_gt_kpts_normalized[..., 0] / \
-            factor[:, 0:1]
+            factor[:, 0:1]  # [num_gts, 17, 2]
         pos_gt_kpts_normalized[..., 1] = pos_gt_kpts_normalized[..., 1] / \
-            factor[:, 1:2]
+            factor[:, 1:2]  # [num_gts, 17, 2]
         kpt_targets[pos_inds] = pos_gt_kpts_normalized.reshape(
             pos_gt_kpts.shape[0], kpt_pred.shape[-1])
 
         area_targets = kpt_pred.new_zeros(
-            kpt_pred.shape[0])  # get areas for calculating oks
+            kpt_pred.shape[0])  # get areas for calculating oks  shape: [300, ]
         pos_gt_areas = gt_areas[sampling_result.pos_assigned_gt_inds]
         area_targets[pos_inds] = pos_gt_areas
 
@@ -857,10 +864,10 @@ class PETRHead(AnchorFreeHead):
         cls_scores_list = [cls_scores[i] for i in range(num_imgs)]
         kpt_preds_list = [kpt_preds[i] for i in range(num_imgs)]
         cls_reg_targets = self.get_targets(cls_scores_list, kpt_preds_list,
-                                           gt_labels_list, gt_keypoints_list,
-                                           gt_areas_list, img_metas)
+                                            gt_labels_list, gt_keypoints_list,
+                                            gt_areas_list, img_metas)
         (labels_list, label_weights_list, kpt_targets_list, kpt_weights_list,
-         area_targets_list, num_total_pos, num_total_neg) = cls_reg_targets
+            area_targets_list, num_total_pos, num_total_neg) = cls_reg_targets
         labels = torch.cat(labels_list, 0)
         label_weights = torch.cat(label_weights_list, 0)
         kpt_targets = torch.cat(kpt_targets_list, 0)
@@ -897,15 +904,15 @@ class PETRHead(AnchorFreeHead):
 
     @force_fp32(apply_to=('all_cls_scores', 'all_kpt_preds'))
     def get_bboxes(self,
-                   all_cls_scores,
-                   all_kpt_preds,
-                   enc_cls_scores,
-                   enc_kpt_preds,
-                   hm_proto,
-                   memory,
-                   mlvl_masks,
-                   img_metas,
-                   rescale=False):
+                    all_cls_scores,
+                    all_kpt_preds,
+                    enc_cls_scores,
+                    enc_kpt_preds,
+                    hm_proto,
+                    memory,
+                    mlvl_masks,
+                    img_metas,
+                    rescale=False):
         """Transform network outputs for a batch into bbox predictions.
 
         Args:

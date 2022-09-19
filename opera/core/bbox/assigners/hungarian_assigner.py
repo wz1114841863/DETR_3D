@@ -37,21 +37,21 @@ class PoseHungarianAssigner(BaseAssigner):
     """
 
     def __init__(self,
-                 cls_cost=dict(type='ClassificationCost', weight=1.0),
-                 kpt_cost=dict(type='KptL1Cost', weight=1.0),
-                 oks_cost=dict(type='OksCost', weight=1.0)):
+                    cls_cost=dict(type='ClassificationCost', weight=1.0),
+                    kpt_cost=dict(type='KptL1Cost', weight=1.0),
+                    oks_cost=dict(type='OksCost', weight=1.0)):
         self.cls_cost = build_match_cost(cls_cost)
         self.kpt_cost = build_match_cost(kpt_cost)
         self.oks_cost = build_match_cost(oks_cost)
 
     def assign(self,
-               cls_pred,
-               kpt_pred,
-               gt_labels,
-               gt_keypoints,
-               gt_areas,
-               img_meta,
-               eps=1e-7):
+                cls_pred,
+                kpt_pred,
+                gt_labels,
+                gt_keypoints,
+                gt_areas,
+                img_meta,
+                eps=1e-7):
         """Computes one-to-one matching based on the weighted costs.
 
         This method assign each query prediction to a ground truth or
@@ -64,8 +64,8 @@ class PoseHungarianAssigner(BaseAssigner):
         2. compute the weighted costs
         3. do Hungarian matching on CPU based on the costs
         4. assign all to 0 (background) first, then for each matched pair
-           between predictions and gts, treat this prediction as foreground
-           and assign the corresponding gt index (plus 1) to it.
+            between predictions and gts, treat this prediction as foreground
+            and assign the corresponding gt index (plus 1) to it.
 
         Args:
             cls_pred (Tensor): Predicted classification logits, shape
@@ -89,11 +89,11 @@ class PoseHungarianAssigner(BaseAssigner):
 
         # 1. assign -1 by default
         assigned_gt_inds = kpt_pred.new_full((num_kpts, ),
-                                             -1,
-                                             dtype=torch.long)
+                                            -1,  
+                                            dtype=torch.long)  # 300
         assigned_labels = kpt_pred.new_full((num_kpts, ),
                                             -1,
-                                            dtype=torch.long)
+                                            dtype=torch.long)  # 300
         if num_gts == 0 or num_kpts == 0:
             # No ground truth or keypoints, return empty assignment
             if num_gts == 0:
@@ -103,37 +103,36 @@ class PoseHungarianAssigner(BaseAssigner):
                 num_gts, assigned_gt_inds, None, labels=assigned_labels)
         img_h, img_w, _ = img_meta['img_shape']
         factor = gt_keypoints.new_tensor([img_w, img_h, img_w,
-                                          img_h]).unsqueeze(0)
+                                            img_h]).unsqueeze(0)  # [1, 4]
 
         # 2. compute the weighted costs
         # classification cost
-        cls_cost = self.cls_cost(cls_pred, gt_labels)
+        cls_cost = self.cls_cost(cls_pred, gt_labels)  # [300, num_gts]
 
         # keypoint regression L1 cost
-        gt_keypoints_reshape = gt_keypoints.reshape(gt_keypoints.shape[0], -1,
-                                                    3)
-        valid_kpt_flag = gt_keypoints_reshape[..., -1]
+        gt_keypoints_reshape = gt_keypoints.reshape(gt_keypoints.shape[0], -1, 3)  # [num_gts, 17, 3]
+        valid_kpt_flag = gt_keypoints_reshape[..., -1]  # [num_gts, 17]
         kpt_pred_tmp = kpt_pred.clone().detach().reshape(
-            kpt_pred.shape[0], -1, 2)
+            kpt_pred.shape[0], -1, 2)  # [300, 17, 2]
         normalize_gt_keypoints = gt_keypoints_reshape[
-            ..., :2] / factor[:, :2].unsqueeze(0)
+            ..., :2] / factor[:, :2].unsqueeze(0)  # [num_gts, 17, 2]
         kpt_cost = self.kpt_cost(kpt_pred_tmp, normalize_gt_keypoints,
-                                 valid_kpt_flag)
+                                    valid_kpt_flag)  # [300, num_kpt]
         # keypoint OKS cost
         kpt_pred_tmp = kpt_pred.clone().detach().reshape(
-            kpt_pred.shape[0], -1, 2)
-        kpt_pred_tmp = kpt_pred_tmp * factor[:, :2].unsqueeze(0)
+            kpt_pred.shape[0], -1, 2)  # [300, 17, 2]
+        kpt_pred_tmp = kpt_pred_tmp * factor[:, :2].unsqueeze(0)  # 归一化后的坐标 * 图像尺寸
         oks_cost = self.oks_cost(kpt_pred_tmp, gt_keypoints_reshape[..., :2],
-                                 valid_kpt_flag, gt_areas)
+                                    valid_kpt_flag, gt_areas)  # [300, num_kpt]
         # weighted sum of above three costs
-        cost = cls_cost + kpt_cost + oks_cost
+        cost = cls_cost + kpt_cost + oks_cost  # [300, num_kpt]
 
         # 3. do Hungarian matching on CPU using linear_sum_assignment
         cost = cost.detach().cpu()
         if linear_sum_assignment is None:
             raise ImportError('Please run "pip install scipy" '
-                              'to install scipy first.')
-        matched_row_inds, matched_col_inds = linear_sum_assignment(cost)
+                                'to install scipy first.')
+        matched_row_inds, matched_col_inds = linear_sum_assignment(cost)  # [num_gts, ]
         matched_row_inds = torch.from_numpy(matched_row_inds).to(
             kpt_pred.device)
         matched_col_inds = torch.from_numpy(matched_col_inds).to(

@@ -3,6 +3,7 @@ import mmcv
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import warnings
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Polygon, Circle
 from mmdet.core.visualization import color_val_matplotlib
@@ -41,20 +42,19 @@ class PETR(DETR):
                 :class:`mmdet.datasets.pipelines.Collect`.
             gt_bboxes (list[Tensor]): Each item are the truth boxes for each
                 image in [tl_x, tl_y, br_x, br_y] format.
-            gt_labels (list[Tensor]): Class indices corresponding to each box.
+            gt_labels (list[Tensor]): Class indices corresponding to each box.  # 0
             gt_keypoints (list[Tensor]): Each item are the truth keypoints for
                 each image in [p^{1}_x, p^{1}_y, p^{1}_v, ..., p^{K}_x,
                 p^{K}_y, p^{K}_v] format.
             gt_areas (list[Tensor]): mask areas corresponding to each box.
             gt_bboxes_ignore (None | list[Tensor]): Specify which bounding
-                boxes can be ignored when computing the loss.
+                boxes can be ignored when computing the loss.  # None
 
         Returns:
             dict[str, Tensor]: A dictionary of loss components.
         """
-        super(SingleStageDetector, self).forward_train(img, img_metas)
-        x = self.extract_feat(img)
-        import pdb;pdb.set_trace()
+        super(SingleStageDetector, self).forward_train(img, img_metas)  # BaseDetector.forward_train()
+        x = self.extract_feat(img)  # x: [bs, 256, H / 8 ..., W / 8 ...], len(x) = 4
         losses = self.bbox_head.forward_train(x, img_metas, gt_bboxes,
                                                 gt_labels, gt_keypoints,
                                                 gt_areas, gt_bboxes_ignore)

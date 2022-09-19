@@ -39,13 +39,13 @@ def transpose_and_gather_feat(feat, ind):
 def gaussian_radius(det_size, min_overlap=0.7):
     """calculate gaussian radius according to object size.
     """
-    height, width = det_size
+    height, width = det_size  # (21.9442, 21.1277)
 
     a1 = 1
-    b1 = (height + width)
-    c1 = width * height * (1 - min_overlap) / (1 + min_overlap)
-    sq1 = torch.sqrt(b1 ** 2 - 4 * a1 * c1)
-    r1 = (b1 + sq1) / 2
+    b1 = (height + width)  # 43.0719
+    c1 = width * height * (1 - min_overlap) / (1 + min_overlap)  # 24.4016
+    sq1 = torch.sqrt(b1 ** 2 - 4 * a1 * c1)  # 41.9235
+    r1 = (b1 + sq1) / 2  # 42.4977
 
     a2 = 4
     b2 = 2 * (height + width)
@@ -73,8 +73,8 @@ def gaussian2D(shape, sigma=1):
 
 
 def draw_umich_gaussian(heatmap, center, radius, k=1):
-    diameter = 2 * radius + 1
-    gaussian = gaussian2D((diameter, diameter), sigma=diameter / 6)
+    diameter = 2 * radius + 1  # 5
+    gaussian = gaussian2D((diameter, diameter), sigma=diameter / 6)  # [5, 5]
     gaussian = heatmap.new_tensor(gaussian)
 
     x, y = int(center[0]), int(center[1])

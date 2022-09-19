@@ -87,7 +87,7 @@ class CenterFocalLoss(nn.Module):
         """
         assert reduction_override in (None, 'none', 'mean', 'sum')
         reduction = (
-            reduction_override if reduction_override else self.reduction)
+            reduction_override if reduction_override else self.reduction)  # none
         loss_reg = self.loss_weight * center_focal_loss(
             pred,
             target,
