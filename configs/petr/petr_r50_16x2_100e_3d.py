@@ -1,5 +1,5 @@
 _base_ = [
-    '../_base_/datasets/coco_keypoint.py', '../_base_/default_runtime.py'
+    '../_base_/datasets/coco_muco_keypoint_3d.py', '../_base_/default_runtime.py'
 ]
 model = dict(
     type='opera.PETR',
@@ -25,7 +25,7 @@ model = dict(
         num_outs=4),
     
     bbox_head=dict(
-        type='opera.PETRHead',
+        type='opera.PETRHead3D',
         num_query=300,
         num_classes=1,  # only person
         in_channels=2048,
@@ -33,7 +33,7 @@ model = dict(
         with_kpt_refine=True,
         as_two_stage=True,
         transformer=dict(
-            type='opera.PETRTransformer',
+            type='opera.PETRTransformer3D',
             encoder=dict(
                 type='mmcv.DetrTransformerEncoder',
                 num_layers=6,
@@ -49,25 +49,6 @@ model = dict(
                 type='opera.PetrTransformerDecoder',
                 num_layers=3,
                 return_intermediate=True,
-                transformerlayers=dict(
-                    type='mmcv.DetrTransformerDecoderLayer',
-                    attn_cfgs=[
-                        dict(
-                            type='mmcv.MultiheadAttention',
-                            embed_dims=256,
-                            num_heads=8,
-                            dropout=0.1),
-                        dict(
-                            type='opera.MultiScaleDeformablePoseAttention',
-                            embed_dims=256)
-                    ],
-                    feedforward_channels=1024,
-                    ffn_dropout=0.1,
-                    operation_order=('self_attn', 'norm', 'cross_attn', 'norm',
-                                        'ffn', 'norm'))),
-            pose3d_decoder=dict(
-                type='',
-                num_layers='',
                 transformerlayers=dict(
                     type='mmcv.DetrTransformerDecoderLayer',
                     attn_cfgs=[
@@ -138,15 +119,19 @@ model = dict(
         loss_hm=dict(type='opera.CenterFocalLoss', loss_weight=4.0),
         loss_kpt_refine=dict(type='mmdet.L1Loss', loss_weight=80.0),
         loss_oks_refine=dict(type='opera.OKSLoss', loss_weight=3.0)),
+        loss_3d_depth=dict(type='mmdet.L1Loss', loss_weight=70.0),
     
     train_cfg=dict(
         assigner=dict(
             type='opera.PoseHungarianAssigner',
             cls_cost=dict(type='mmdet.FocalLossCost', weight=2.0),
             kpt_cost=dict(type='opera.KptL1Cost', weight=70.0),
-            oks_cost=dict(type='opera.OksCost', weight=7.0))),
+            oks_cost=dict(type='opera.OksCost', weight=7.0)
+        )
+    ),
     
-    test_cfg=dict(max_per_img=100))  # set 'max_per_img=20' for time counting
+    test_cfg=dict(max_per_img=100),
+)  # set 'max_per_img=20' for time counting
 
 # optimizer
 optimizer = dict(
@@ -161,6 +146,12 @@ optimizer = dict(
         }))
 
 optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
+
+# Custom setting for scaling LR automatically
+#   - `enable` means enable scaling LR automatically
+#       or not by default.
+#   - `base_batch_size` = (8 GPUs) x (2 samples per GPU).
+auto_scale_lr = dict(enable=False, base_batch_size=1)
 
 # learning policy
 lr_config = dict(policy='step', step=[80])

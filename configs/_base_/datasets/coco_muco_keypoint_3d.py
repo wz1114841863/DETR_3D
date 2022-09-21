@@ -1,4 +1,4 @@
-# dataset settings
+# dataset settings, use 3d dataset
 dataset_type = 'opera.JointDataset'
 # data_root
 data_coco_root = '/data/coco/'
@@ -7,7 +7,8 @@ data_muco_root = '/data/MuCo/'
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
 
-# train pipeline
+# train_pipeline, NOTE the img_scale and the Pad's size_divisor is different
+# from the default setting in mmdet.
 train_pipeline = [
     dict(type='opera.LoadImgFromFile', to_float32=True),
     dict(
@@ -22,7 +23,7 @@ train_pipeline = [
         brightness_delta=32,
         contrast_range=(0.5, 1.5),
         saturation_range=(0.5, 1.5),
-        hue_delta=18
+        hue_delta=18,
     ),
     # dict(
     #     type='opera.VisImg',
@@ -33,7 +34,7 @@ train_pipeline = [
     # ),
     dict(
         type='opera.AugRandomFlip',
-        flip_ratio=1.0,  # 测试
+        flip_ratio=1.0,  # 测试Flip
     ),
     # dict(
     #     type='opera.VisImg',
@@ -45,7 +46,7 @@ train_pipeline = [
     dict(
         type='opera.AugRandomRotate',
         max_rotate_degree=30,
-        rotate_prob=1.0,  # 测试
+        rotate_prob=1.0,  # 测试Rotate
     ),
     # dict(
     #     type='opera.VisImg',
@@ -62,7 +63,8 @@ train_pipeline = [
                     type='opera.AugResize',
                     img_scale=[(400, 1400), (1400, 1400)],
                     multiscale_mode='range',
-                    keep_ratio=True)
+                    keep_ratio=True,
+                )
             ],
             [
                 dict(
@@ -71,28 +73,31 @@ train_pipeline = [
                     # follow the original impl
                     img_scale=[(400, 4200), (500, 4200), (600, 4200)],
                     multiscale_mode='value',
-                    keep_ratio=True),
+                    keep_ratio=True,
+                ),
                 dict(
                     type='opera.AugCrop',
                     crop_type='absolute_range',
                     crop_size=(384, 600),
-                    allow_negative_crop=True),
+                    allow_negative_crop=True,
+                ),
                 dict(
                     type='opera.AugResize',
                     img_scale=[(400, 1400), (1400, 1400)],
                     multiscale_mode='range',
                     override=True,
-                    keep_ratio=True)
+                    keep_ratio=True,
+                )
             ]
         ]
     ),
-    dict(
-        type='opera.VisImg',
-        draw_bbox=True,
-        draw_keypoints=True,
-        img_prefix='before_Normalize_00',
-        img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
-    ),
+    # dict(
+    #     type='opera.VisImg',
+    #     draw_bbox=True,
+    #     draw_keypoints=True,
+    #     img_prefix='before_Normalize_00',
+    #     img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
+    # ),
     dict(type='mmdet.Normalize', **img_norm_cfg),
     dict(type='mmdet.Pad', size_divisor=1),  # 使用0填充图像边缘
     dict(type='opera.FormatBundle',
@@ -101,6 +106,7 @@ train_pipeline = [
             keys=['img', 'gt_bboxs', 'gt_keypoints', 'ann_info', 'dataset']),
 ]
 
+# 尚未修改
 test_pipeline = [
     dict(type='mmdet.LoadImageFromFile'),
     dict(
@@ -118,6 +124,7 @@ test_pipeline = [
 ]
 
 
+# 仅使用修改格式后的coco数据集进行调试
 data = dict(
     samples_per_gpu=1,
     workers_per_gpu=1,
@@ -137,6 +144,7 @@ data = dict(
         pipeline=test_pipeline,
     )
 )
+
 
 # data = dict(
 #     samples_per_gpu=1,

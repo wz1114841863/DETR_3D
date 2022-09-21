@@ -18,12 +18,12 @@ from ..builder import HEADS, build_loss
 
 
 @HEADS.register_module()
-class PETRHead(AnchorFreeHead):
+class PETRHead3D(AnchorFreeHead):
     """Head of `End-to-End Multi-Person Pose Estimation with Transformers`.
-
+        增添3D深度预测。将object query -> [300, 17 * 3]
     Args:
         num_classes (int): Number of categories excluding the background.  # PETR中仅使用了人
-        in_channels (int): Number of channels in the input feature map.  # 256
+        in_channels (int): Number of channels in the input feature map.  # 2048
         num_query (int): Number of query in Transformer.
         num_kpt_fcs (int, optional): Number of fully-connected layers used in
             `FFN`, which is then used for the keypoint regression head.
@@ -31,7 +31,7 @@ class PETRHead(AnchorFreeHead):
         transformer (obj:`mmcv.ConfigDict`|dict): ConfigDict is used for
             building the Encoder and Decoder. Default: None.
         sync_cls_avg_factor (bool): Whether to sync the avg_factor of
-            all ranks. Default to False.    # ???
+            all ranks. Default to False.    # 同步进程信息
         positional_encoding (obj:`mmcv.ConfigDict`|dict):
             Config for position encoding.
         loss_cls (obj:`mmcv.ConfigDict`|dict): Config of the
@@ -42,6 +42,8 @@ class PETRHead(AnchorFreeHead):
             regression oks loss. Default `OKSLoss`.
         loss_hm (obj:`mmcv.ConfigDict`|dict): Config of the
             regression heatmap loss. Default `NegLoss`.
+        loss_3d_depth (obj:`mmcv.ConfigDict`|dict): Config of the
+            3D Depth loss. Default `L1Loss`.
         as_two_stage (bool) : Whether to generate the proposal from
             the outputs of encoder.
         with_kpt_refine (bool): Whether to refine the reference points
@@ -86,6 +88,7 @@ class PETRHead(AnchorFreeHead):
                     loss_kpt_rpn=dict(type='mmdet.L1Loss', loss_weight=70.0),
                     loss_kpt_refine=dict(type='mmdet.L1Loss', loss_weight=70.0),
                     loss_oks_refine=dict(type='opera.OKSLoss', loss_weight=2.0),
+                    loss_3d_depth=dict(type='mmdet.L1Loss', loss_weight=70.0),
                     test_cfg=dict(max_per_img=100),
                     init_cfg=None,
                     **kwargs):
@@ -122,6 +125,7 @@ class PETRHead(AnchorFreeHead):
         if self.as_two_stage:
             transformer['as_two_stage'] = self.as_two_stage  
         # transformer: decoder, encoder, hm_encoder, refine_decoder
+        
         self.loss_cls = build_loss(loss_cls)  # FocalLoss()
         self.loss_kpt = build_loss(loss_kpt)  # L1Loss()
         self.loss_kpt_rpn = build_loss(loss_kpt_rpn)  # L1Loss()
@@ -129,6 +133,8 @@ class PETRHead(AnchorFreeHead):
         self.loss_oks = build_loss(loss_oks)  # OKSLoss()
         self.loss_oks_refine = build_loss(loss_oks_refine)  # OKSLoss()
         self.loss_hm = build_loss(loss_hm)  # CenterFocalLoss()
+        self.loss_3d_depth = build_loss(loss_3d_depth)  # L1Loss()
+            
         if self.loss_cls.use_sigmoid:
             self.cls_out_channels = num_classes  # 1
         else:
@@ -157,7 +163,7 @@ class PETRHead(AnchorFreeHead):
         for _ in range(self.num_kpt_fcs):  # 2
             kpt_branch.append(Linear(512, 512))
             kpt_branch.append(nn.ReLU())
-        kpt_branch.append(Linear(512, 2 * self.num_keypoints))  # Linear(512, 34, bias=True)
+        kpt_branch.append(Linear(512, 3 * self.num_keypoints))  # Linear(512, 51, bias=True), (x, y, depth)
         kpt_branch = nn.Sequential(*kpt_branch)
 
         def _get_clones(module, N):
@@ -184,8 +190,8 @@ class PETRHead(AnchorFreeHead):
         for _ in range(self.num_kpt_fcs):  # 2
             refine_kpt_branch.append(Linear(self.embed_dims, self.embed_dims))
             refine_kpt_branch.append(nn.ReLU())
-        refine_kpt_branch.append(Linear(self.embed_dims, 2))
-        refine_kpt_branch = nn.Sequential(*refine_kpt_branch)  # Linear(256, 2, bias=True)
+        refine_kpt_branch.append(Linear(self.embed_dims, 3))  # (x, y, z)
+        refine_kpt_branch = nn.Sequential(*refine_kpt_branch)  # Linear(256, 3, bias=True)
         if self.with_kpt_refine:
             num_pred = self.transformer.refine_decoder.num_layers  # 2
             self.refine_kpt_branches = _get_clones(refine_kpt_branch, num_pred)  # 2 * refine_kpt_branch
@@ -234,12 +240,12 @@ class PETRHead(AnchorFreeHead):
                 `None` would be returned.
         """
         batch_size = mlvl_feats[0].size(0)
-        input_img_h, input_img_w = img_metas[0]['batch_input_shape']  # (1241, 800)
+        input_img_h, input_img_w = img_metas[0]['batch_input_shape']  # (pad_h, pad_w)
         img_masks = mlvl_feats[0].new_ones(
-            (batch_size, input_img_h, input_img_w))  # img_masks: [bs, 1241, 800]
+            (batch_size, input_img_h, input_img_w))  # img_masks: [bs, pad_h, pad_w]
         
         for img_id in range(batch_size):
-            img_h, img_w, _ = img_metas[img_id]['img_shape']  # (1241, 800)
+            img_h, img_w, _ = img_metas[img_id]['img_shape']  # (pad_h, pad_w)
             img_masks[img_id, :img_h, :img_w] = 0
 
         mlvl_masks = []

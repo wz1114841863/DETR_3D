@@ -23,7 +23,7 @@ class PETRHead(AnchorFreeHead):
 
     Args:
         num_classes (int): Number of categories excluding the background.  # PETR中仅使用了人
-        in_channels (int): Number of channels in the input feature map.  # 256
+        in_channels (int): Number of channels in the input feature map.  # 2048
         num_query (int): Number of query in Transformer.
         num_kpt_fcs (int, optional): Number of fully-connected layers used in
             `FFN`, which is then used for the keypoint regression head.

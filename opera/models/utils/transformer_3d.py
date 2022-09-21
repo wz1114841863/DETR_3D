@@ -19,234 +19,6 @@ from .builder import (TRANSFORMER, ATTENTION, TRANSFORMER_LAYER_SEQUENCE,
                         build_transformer_layer_sequence)
 
 
-@TRANSFORMER.register_module()
-class SOITTransformer(DeformableDetrTransformer):
-    """Implements the SOIT transformer.
-
-    Args:
-        mask_channels (int): Number of channels of output mask feature.
-        seg_encoder (obj:`ConfigDict`): ConfigDict is used for building the
-            encoder for mask feature generation.
-        num_feature_levels (int): Number of feature maps from FPN:
-            Default: 4.
-        two_stage_num_proposals (int): Number of proposals when set
-            `as_two_stage` as True. Default: 300.
-    """
-
-    def __init__(self,
-                mask_channels=8,
-                seg_encoder=dict(
-                    type='DetrTransformerEncoder',
-                    num_layers=1,
-                    transformerlayers=dict(
-                        type='BaseTransformerLayer',
-                        attn_cfgs=dict(
-                            type='MultiScaleDeformableAttention',
-                            embed_dims=256,
-                            num_heads=1,
-                            num_levels=1),
-                        feedforward_channels=1024,
-                        ffn_dropout=0.1,
-                        operation_order=('self_attn', 'norm', 'ffn', 'norm'))),
-                as_two_stage=False,
-                num_feature_levels=4,
-                two_stage_num_proposals=300,
-                **kwargs):
-        super(SOITTransformer, self).__init__(
-            as_two_stage=as_two_stage, 
-            num_feature_levels=num_feature_levels,
-            two_stage_num_proposals=two_stage_num_proposals,
-            **kwargs)
-        self.seg_encoder = build_transformer_layer_sequence(seg_encoder)
-        self.mask_channels = mask_channels
-        self.mask_trans = nn.Linear(self.embed_dims, self.mask_channels)
-        self.mask_trans_norm = nn.LayerNorm(self.mask_channels)
-    
-    def forward(self,
-                mlvl_feats,
-                mlvl_masks,
-                query_embed,
-                mlvl_pos_embeds,
-                reg_branches=None,
-                cls_branches=None,
-                **kwargs):
-        """Forward function for `Transformer`.
-
-        Args:
-            mlvl_feats (list(Tensor)): Input queries from
-                different level. Each element has shape
-                [bs, embed_dims, h, w].
-            mlvl_masks (list(Tensor)): The key_padding_mask from
-                different level used for encoder and decoder,
-                each element has shape [bs, h, w].
-            query_embed (Tensor): The query embedding for decoder,
-                with shape [num_query, c].
-            mlvl_pos_embeds (list(Tensor)): The positional encoding
-                of feats from different level, has the shape
-                [bs, embed_dims, h, w].
-            reg_branches (obj:`nn.ModuleList`): Regression heads for
-                feature maps from each decoder layer. Only would be
-                passed when `with_box_refine` is Ture. Default to None.
-            cls_branches (obj:`nn.ModuleList`): Classification heads
-                for feature maps from each decoder layer. Only would
-                be passed when `as_two_stage` is Ture. Default to None.
-
-        Returns:
-            tuple[Tensor]: results of decoder containing the following tensor.
-
-                - inter_states: Outputs from decoder. If
-                    return_intermediate_dec is True output has shape \
-                        (num_dec_layers, bs, num_query, embed_dims), else has \
-                        shape (1, bs, num_query, embed_dims).
-                - init_reference_out: The initial value of reference \
-                    points, has shape (bs, num_queries, 4).
-                - inter_references_out: The internal value of reference \
-                    points in decoder, has shape \
-                    (num_dec_layers, bs,num_query, embed_dims)
-                - enc_outputs_class: The classification score of \
-                    proposals generated from \
-                    encoder's feature maps, has shape \
-                    (batch, h*w, num_classes). \
-                    Only would be returned when `as_two_stage` is True, \
-                    otherwise None.
-                - enc_outputs_coord_unact: The regression results \
-                    generated from encoder's feature maps., has shape \
-                    (batch, h*w, 4). Only would \
-                    be returned when `as_two_stage` is True, \
-                    otherwise None.
-                - mask_proto: Feature, positional encoding and other \
-                    information for mask feature.
-        """
-        assert self.as_two_stage or query_embed is not None
-
-        feat_flatten = []
-        mask_flatten = []
-        lvl_pos_embed_flatten = []
-        spatial_shapes = []
-        for lvl, (feat, mask, pos_embed) in enumerate(
-                zip(mlvl_feats, mlvl_masks, mlvl_pos_embeds)):
-            bs, c, h, w = feat.shape
-            spatial_shape = (h, w)
-            spatial_shapes.append(spatial_shape)
-            feat = feat.flatten(2).transpose(1, 2)
-            mask = mask.flatten(1)
-            pos_embed = pos_embed.flatten(2).transpose(1, 2)
-            lvl_pos_embed = pos_embed + self.level_embeds[lvl].view(1, 1, -1)
-            lvl_pos_embed_flatten.append(lvl_pos_embed)
-            feat_flatten.append(feat)
-            mask_flatten.append(mask)
-        feat_flatten = torch.cat(feat_flatten, 1)
-        mask_flatten = torch.cat(mask_flatten, 1)
-        lvl_pos_embed_flatten = torch.cat(lvl_pos_embed_flatten, 1)
-        spatial_shapes = torch.as_tensor(
-            spatial_shapes, dtype=torch.long, device=feat_flatten.device)
-        level_start_index = torch.cat((spatial_shapes.new_zeros(
-            (1, )), spatial_shapes.prod(1).cumsum(0)[:-1]))
-        valid_ratios = torch.stack(
-            [self.get_valid_ratio(m) for m in mlvl_masks], 1)
-
-        reference_points = \
-            self.get_reference_points(spatial_shapes,
-                                        valid_ratios,
-                                        device=feat.device)
-
-        feat_flatten = feat_flatten.permute(1, 0, 2)  # (H*W, bs, embed_dims)
-        lvl_pos_embed_flatten = lvl_pos_embed_flatten.permute(
-            1, 0, 2)  # (H*W, bs, embed_dims)
-        memory = self.encoder(
-            query=feat_flatten,
-            key=None,
-            value=None,
-            query_pos=lvl_pos_embed_flatten,
-            query_key_padding_mask=mask_flatten,
-            spatial_shapes=spatial_shapes,
-            reference_points=reference_points,
-            level_start_index=level_start_index,
-            valid_ratios=valid_ratios,
-            **kwargs)
-
-        memory = memory.permute(1, 0, 2)
-        bs, _, c = memory.shape
-        seg_memory = memory[:, level_start_index[0]:level_start_index[1], :]
-        seg_pos_embed = lvl_pos_embed_flatten[
-            level_start_index[0]:level_start_index[1], :, :]
-        seg_mask = mask_flatten[:, level_start_index[0]:level_start_index[1]]
-        seg_reference_points = reference_points[
-            :, level_start_index[0]:level_start_index[1], [0], :]
-        seg_memory = seg_memory.permute(1, 0, 2)
-
-        seg_memory = self.seg_encoder(
-            query=seg_memory,
-            key=None,
-            value=None,
-            query_pos=seg_pos_embed,
-            query_key_padding_mask=seg_mask,
-            spatial_shapes=spatial_shapes[[0]],
-            reference_points=seg_reference_points,
-            level_start_index=level_start_index[0],
-            valid_ratios=valid_ratios[:, [0], :],
-            **kwargs)
-        
-        seg_memory = self.mask_trans_norm(self.mask_trans(seg_memory))
-        mask_proto = (seg_memory, seg_pos_embed, seg_mask,
-                      spatial_shapes[[0]], seg_reference_points,
-                      level_start_index[0], valid_ratios[:, [0], :])
-        
-        if self.as_two_stage:
-            output_memory, output_proposals = \
-                self.gen_encoder_output_proposals(
-                    memory, mask_flatten, spatial_shapes)
-            enc_outputs_class = cls_branches[self.decoder.num_layers](
-                output_memory)
-            enc_outputs_coord_unact = \
-                reg_branches[
-                    self.decoder.num_layers](output_memory) + output_proposals
-
-            topk = self.two_stage_num_proposals
-            topk_proposals = torch.topk(
-                enc_outputs_class[..., 0], topk, dim=1)[1]
-            topk_coords_unact = torch.gather(
-                enc_outputs_coord_unact, 1,
-                topk_proposals.unsqueeze(-1).repeat(1, 1, 4))
-            topk_coords_unact = topk_coords_unact.detach()
-            reference_points = topk_coords_unact.sigmoid()
-            init_reference_out = reference_points
-            pos_trans_out = self.pos_trans_norm(
-                self.pos_trans(self.get_proposal_pos_embed(topk_coords_unact)))
-            query_pos, query = torch.split(pos_trans_out, c, dim=2)
-        else:
-            query_pos, query = torch.split(query_embed, c, dim=1)
-            query_pos = query_pos.unsqueeze(0).expand(bs, -1, -1)
-            query = query.unsqueeze(0).expand(bs, -1, -1)
-            reference_points = self.reference_points(query_pos).sigmoid()
-            init_reference_out = reference_points
-
-        # decoder
-        query = query.permute(1, 0, 2)
-        memory = memory.permute(1, 0, 2)
-        query_pos = query_pos.permute(1, 0, 2)
-        inter_states, inter_references = self.decoder(
-            query=query,
-            key=None,
-            value=memory,
-            query_pos=query_pos,
-            key_padding_mask=mask_flatten,
-            reference_points=reference_points,
-            spatial_shapes=spatial_shapes,
-            level_start_index=level_start_index,
-            valid_ratios=valid_ratios,
-            reg_branches=reg_branches,
-            **kwargs)
-
-        inter_references_out = inter_references
-        if self.as_two_stage:
-            return inter_states, init_reference_out,\
-                inter_references_out, enc_outputs_class,\
-                enc_outputs_coord_unact, mask_proto
-        return inter_states, init_reference_out, \
-            inter_references_out, None, None, mask_proto
-
-
 @ATTENTION.register_module()
 class MultiScaleDeformablePoseAttention(BaseModule):
     """An attention module used in PETR. `End-to-End Multi-Person
@@ -512,7 +284,7 @@ class PetrTransformerDecoder(TransformerLayerSequence):
 
 
 @TRANSFORMER.register_module()
-class PETRTransformer(Transformer):
+class PETRTransformer3D(Transformer):
     """Implements the PETR transformer.
 
     Args:
@@ -563,7 +335,7 @@ class PETRTransformer(Transformer):
                 two_stage_num_proposals=300,
                 num_keypoints=17,
                 **kwargs):
-        super(PETRTransformer, self).__init__(**kwargs)
+        super(PETRTransformer3D, self).__init__(**kwargs)
         self.as_two_stage = as_two_stage
         self.num_feature_levels = num_feature_levels
         self.two_stage_num_proposals = two_stage_num_proposals
@@ -585,7 +357,7 @@ class PETRTransformer(Transformer):
                                                        self.embed_dims * 2)
         else:
             self.reference_points = nn.Linear(self.embed_dims,
-                                              2 * self.num_keypoints)
+                                              3 * self.num_keypoints)  # (x, y, depth)
 
     def init_weights(self):
         """Initialize the transformer weights."""
@@ -625,14 +397,15 @@ class PETRTransformer(Transformer):
                 - output_proposals (Tensor): The normalized proposal
                     after a inverse sigmoid, has shape (bs, num_keys, 4). # (bs, num_keys, 2)
         """
+
         N, S, C = memory.shape
         proposals = []
         _cur = 0  # 起点位置
         for lvl, (H, W) in enumerate(spatial_shapes):
             mask_flatten_ = memory_padding_mask[:, _cur:(_cur + H * W)].view(
                 N, H, W, 1)  # [1, h, w, 1], 取出对应位置的mask
-            valid_H = torch.sum(~mask_flatten_[:, :, 0, 0], 1)  # eg: [56, 89]
-            valid_W = torch.sum(~mask_flatten_[:, 0, :, 0], 1)  # eg: [61, 113]
+            valid_H = torch.sum(~mask_flatten_[:, :, 0, 0], 1)
+            valid_W = torch.sum(~mask_flatten_[:, 0, :, 0], 1)
 
             grid_y, grid_x = torch.meshgrid(  # grid_y, grid_x：[h， w]
                 torch.linspace(
@@ -641,17 +414,20 @@ class PETRTransformer(Transformer):
                     0, W - 1, W, dtype=torch.float32, device=memory.device))
             grid = torch.cat([grid_x.unsqueeze(-1), grid_y.unsqueeze(-1)], -1)  # [h, w, 2]
 
-            scale = torch.cat([valid_W.unsqueeze(-1),  # [1, 1, 1, 2]
+            scale = torch.cat([valid_W.unsqueeze(-1),  # [bs, 1, 1, 2]
                                 valid_H.unsqueeze(-1)], 1).view(N, 1, 1, 2)  
-            grid = (grid.unsqueeze(0).expand(N, -1, -1, -1) + 0.5) / scale  # [bs, h, w, 2], 归一化坐标
+            grid = (grid.unsqueeze(0).expand(N, -1, -1, -1) + 0.5) / scale  # [bs, h, w, 2]
             proposal = grid.view(N, -1, 2)  # [bs, h*w, 2]
+            # 添加预测点深度信息，初始化为0.
+            depth = torch.zeros(grid.shape[0], grid.shape[1], 1)
+            proposal = torch.cat([proposal, depth], -1)  # [bs, h*w, 3]
             proposals.append(proposal)
             _cur += (H * W)
-        output_proposals = torch.cat(proposals, 1)  # [bs, sum(h*w), 2]
+        output_proposals = torch.cat(proposals, 1)  # [bs, sum(h*w), 3]
         output_proposals_valid = ((output_proposals > 0.01) &
                                     (output_proposals < 0.99)).all(
                                         -1, keepdim=True)  # [bs, sum(h*w), 1], True / False
-        output_proposals = torch.log(output_proposals / (1 - output_proposals))  # [bs, sum(h*w), 2]
+        output_proposals = torch.log(output_proposals / (1 - output_proposals))  # [bs, sum(h*w), 3]
         output_proposals = output_proposals.masked_fill(
             memory_padding_mask.unsqueeze(-1), float('inf'))
         output_proposals = output_proposals.masked_fill(
@@ -855,19 +631,21 @@ class PETRTransformer(Transformer):
             hm_memory = hm_memory.permute(1, 0, 2).reshape(bs,  # [bs, h1, w1, 256]
                 spatial_shapes[0, 0], spatial_shapes[0, 1], -1)
             hm_proto = (hm_memory, mlvl_masks[0])  # tuple
-        import pdb; pdb.set_trace()
+
         if self.as_two_stage:
             output_memory, output_proposals = \
                 self.gen_encoder_output_proposals(
                     memory, mask_flatten, spatial_shapes)
-            # output_memory: [bs, sum(h*w), 256], output_proposals: [bs, sum(h*w), 2]
+            # output_memory: [bs, sum(h*w), 256], output_proposals: [bs, sum(h*w), 3]
             enc_outputs_class = cls_branches[self.decoder.num_layers](
                 output_memory)  # [bs, sum(h*w), 1]
             enc_outputs_kpt_unact = \
-                kpt_branches[self.decoder.num_layers](output_memory)  # [bs, sum(h*w), 34]
-            enc_outputs_kpt_unact[..., 0::2] += output_proposals[..., 0:1]  # [bs, sum(h*w), 17]
-            enc_outputs_kpt_unact[..., 1::2] += output_proposals[..., 1:2]  # [bs, sum(h*w), 17]
-
+                kpt_branches[self.decoder.num_layers](output_memory)  # [bs, sum(h*w), 51]
+            enc_outputs_kpt_unact[..., 0::3] += output_proposals[..., 0:1]  # [bs, sum(h*w), 17]
+            enc_outputs_kpt_unact[..., 1::3] += output_proposals[..., 1:2]  # [bs, sum(h*w), 17]
+            enc_outputs_kpt_unact[..., 2::3] += output_proposals[..., 2:3]  # [bs, sum(h*w), 17]
+            # TODO, 将参考点移至骨盆点
+            
             topk = self.two_stage_num_proposals  # 300
             topk_proposals = torch.topk(
                 enc_outputs_class[..., 0], topk, dim=1)[1]  # [bs, 300]
@@ -875,13 +653,17 @@ class PETRTransformer(Transformer):
             #     enc_outputs_coord_unact, 1,
             #     topk_proposals.unsqueeze(-1).repeat(1, 1, 4))
             # topk_coords_unact = topk_coords_unact.detach()
-            topk_kpts_unact = torch.gather(  # [bs, 300, 34], torch.gather(): 利用index来索引input特定位置的数值
+            topk_kpts_unact = torch.gather(  # [bs, 300, 51]
                 enc_outputs_kpt_unact, 1,
                 topk_proposals.unsqueeze(-1).repeat(
                     1, 1, enc_outputs_kpt_unact.size(-1)))  # 取出对应的kpts
             topk_kpts_unact = topk_kpts_unact.detach()
 
-            reference_points = topk_kpts_unact.sigmoid()  # [bs, 300, 34], 归一化后的坐标
+            reference_points = torch.zeros(topk_kpts_unact)
+            reference_points[:, :, 0:3] = topk_kpts_unact[:, :, 0:3].sigmoid()  # [bs, 300, 51], 归一化后的坐标
+            reference_points[:, :, 1:3] = topk_kpts_unact[:, :, 1:3].sigmoid()
+            reference_points[:, :, 2:3] = topk_kpts_unact[:, :, 2:3]  # 深度并没有归一化
+            
             init_reference_out = reference_points
             # learnable query and query_pos, query_embed 是随机初始化的。
             query_pos, query = torch.split(query_embed, c, dim=1)  # [300, 256]
