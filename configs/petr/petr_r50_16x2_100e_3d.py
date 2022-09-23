@@ -29,6 +29,7 @@ model = dict(
         num_query=300,
         num_classes=1,  # only person
         in_channels=2048,
+        num_keypoints=15, # 关键点个数变为15
         sync_cls_avg_factor=True,
         with_kpt_refine=True,
         as_two_stage=True,
@@ -119,7 +120,7 @@ model = dict(
         loss_hm=dict(type='opera.CenterFocalLoss', loss_weight=4.0),
         loss_kpt_refine=dict(type='mmdet.L1Loss', loss_weight=80.0),
         loss_oks_refine=dict(type='opera.OKSLoss', loss_weight=3.0)),
-        loss_3d_depth=dict(type='mmdet.L1Loss', loss_weight=70.0),
+        loss_depth=dict(type='mmdet.L1Loss', loss_weight=70.0),
     
     train_cfg=dict(
         assigner=dict(

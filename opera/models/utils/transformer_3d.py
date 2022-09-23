@@ -198,7 +198,7 @@ class MultiScaleDeformablePoseAttention(BaseModule):
 
 
 @TRANSFORMER_LAYER_SEQUENCE.register_module()
-class PetrTransformerDecoder(TransformerLayerSequence):
+class PetrTransformerDecoder3D(TransformerLayerSequence):
     """Implements the decoder in PETR transformer.
 
     Args:
@@ -213,7 +213,7 @@ class PetrTransformerDecoder(TransformerLayerSequence):
                     num_keypoints=17,
                     **kwargs):
 
-        super(PetrTransformerDecoder, self).__init__(*args, **kwargs)
+        super(PetrTransformerDecoder3D, self).__init__(*args, **kwargs)
         self.return_intermediate = return_intermediate
         self.num_keypoints = num_keypoints
 
@@ -223,6 +223,7 @@ class PetrTransformerDecoder(TransformerLayerSequence):
                 reference_points=None,
                 valid_ratios=None,
                 kpt_branches=None,
+                depth_branches=None,
                 **kwargs):
         """Forward function for `TransformerDecoder`.
 
@@ -250,28 +251,51 @@ class PetrTransformerDecoder(TransformerLayerSequence):
                 reference_points_input = \
                     reference_points[:, :, None] * \
                     valid_ratios.repeat(1, 1, self.num_keypoints)[:, None]  # [bs, 300, 4, 34]
+            elif reference_points.shape[-1] == self.num_keypoints * 3 + 1:  # 3d
+                reference_points_input = \
+                    reference_points[:, :, None, :self.num_keypoints * 2] * \
+                        valid_ratios.repeat(1, 1, self.num_keypoints)[:, None]  # [bs, 300, 4, 30]
+                reference_depth_input = reference_points[:, :, None, self.num_keypoints * 2:]
+                reference_depth_input = reference_depth_input.repeat(1, 1, 4, 1)  # [bs, 300, 4, 1 + 15]
+                reference_points_input = torch.cat((reference_points_input, reference_depth_input), -1)
             else:
                 assert reference_points.shape[-1] == 2
                 reference_points_input = reference_points[:, :, None] * \
                                             valid_ratios[:, None]
-            output = layer(  # [300, 1, 256]
+            output = layer(  # [300, bs, 256]
                 output,
                 *args,
                 reference_points=reference_points_input,
                 **kwargs)
-            output = output.permute(1, 0, 2)  # [1, 300, 256]
+            output = output.permute(1, 0, 2)  # [bs, 300, 256]
 
+            new_kpt_coord = reference_points_input[..., :2*self.num_keypoints]
+            new_kpt_depth = reference_points_input[..., 2*self.num_keypoints:]
             if kpt_branches is not None:
-                tmp = kpt_branches[lid](output)  # [1, 300, 34]
+                tmp = kpt_branches[lid](output)  # [bs, 300, 15*2]
                 if reference_points.shape[-1] == self.num_keypoints * 2:
                     new_reference_points = tmp + inverse_sigmoid(
                         reference_points)  # Pose Decoder 中公式一
                     new_reference_points = new_reference_points.sigmoid()  # [1, 300, 34]
+                    reference_points = new_reference_points.detach()
+                elif reference_points.shape[-1] == self.num_keypoints * 3 + 1:
+                    new_kpt_refer_coord = tmp + inverse_sigmoid(
+                        new_kpt_coord)
+                    new_kpt_refer_coord =  new_kpt_refer_coord.sigmoud()
                 else:
                     raise NotImplementedError
-                reference_points = new_reference_points.detach()
-
+                
+            if depth_branches is not None:
+                tmp = depth_branches[lid](output)  # [bs, 300, 1 + 15]
+                if reference_points.shape[-1] == self.num_keypoints * 3 + 1:
+                    new_kpt_refer_depth = tmp + new_kpt_depth
+                    new_kpt_refer_depth = new_kpt_refer_depth.detach()
+                else:
+                    raise NotImplementedError
+            
+            reference_points = torch.cat((new_kpt_refer_coord, new_kpt_refer_depth), -1).detach()
             output = output.permute(1, 0, 2)  # [300, 1, 256]
+            
             if self.return_intermediate:
                 intermediate.append(output)
                 intermediate_reference_points.append(reference_points)
@@ -418,9 +442,9 @@ class PETRTransformer3D(Transformer):
                                 valid_H.unsqueeze(-1)], 1).view(N, 1, 1, 2)  
             grid = (grid.unsqueeze(0).expand(N, -1, -1, -1) + 0.5) / scale  # [bs, h, w, 2]
             proposal = grid.view(N, -1, 2)  # [bs, h*w, 2]
-            # 添加预测点深度信息，初始化为0.
-            depth = torch.zeros(grid.shape[0], grid.shape[1], 1)
-            proposal = torch.cat([proposal, depth], -1)  # [bs, h*w, 3]
+            # # 添加预测点深度信息，初始化为0.
+            # depth = torch.zeros(grid.shape[0], grid.shape[1], 1)
+            # proposal = torch.cat([proposal, depth], -1)  # [bs, h*w, 3]
             proposals.append(proposal)
             _cur += (H * W)
         output_proposals = torch.cat(proposals, 1)  # [bs, sum(h*w), 3]
@@ -511,6 +535,7 @@ class PETRTransformer3D(Transformer):
                 mlvl_pos_embeds,
                 kpt_branches=None,
                 cls_branches=None,
+                depth_braches=None,
                 **kwargs):
         """Forward function for `Transformer`.
 
@@ -639,13 +664,18 @@ class PETRTransformer3D(Transformer):
             # output_memory: [bs, sum(h*w), 256], output_proposals: [bs, sum(h*w), 3]
             enc_outputs_class = cls_branches[self.decoder.num_layers](
                 output_memory)  # [bs, sum(h*w), 1]
+            
             enc_outputs_kpt_unact = \
-                kpt_branches[self.decoder.num_layers](output_memory)  # [bs, sum(h*w), 51]
-            enc_outputs_kpt_unact[..., 0::3] += output_proposals[..., 0:1]  # [bs, sum(h*w), 17]
-            enc_outputs_kpt_unact[..., 1::3] += output_proposals[..., 1:2]  # [bs, sum(h*w), 17]
-            enc_outputs_kpt_unact[..., 2::3] += output_proposals[..., 2:3]  # [bs, sum(h*w), 17]
+                kpt_branches[self.decoder.num_layers](output_memory) 
+            # [bs, sum(h*w), 15*2]
+            enc_outputs_kpt_unact[..., 0::2] += output_proposals[..., 0:1]  # [bs, sum(h*w), 15]
+            enc_outputs_kpt_unact[..., 1::2] += output_proposals[..., 1:2]  # [bs, sum(h*w), 15]
             # TODO, 将参考点移至骨盆点
             
+            # depth, 
+            enc_outputs_depth = \
+                depth_braches[self.decoder.num_layers](output_memory)  # [bs, sum(h*w), 1 + 15]
+            # topk
             topk = self.two_stage_num_proposals  # 300
             topk_proposals = torch.topk(
                 enc_outputs_class[..., 0], topk, dim=1)[1]  # [bs, 300]
@@ -653,18 +683,22 @@ class PETRTransformer3D(Transformer):
             #     enc_outputs_coord_unact, 1,
             #     topk_proposals.unsqueeze(-1).repeat(1, 1, 4))
             # topk_coords_unact = topk_coords_unact.detach()
-            topk_kpts_unact = torch.gather(  # [bs, 300, 51]
+            topk_kpts_unact = torch.gather(  # [bs, 300, 30]
                 enc_outputs_kpt_unact, 1,
                 topk_proposals.unsqueeze(-1).repeat(
                     1, 1, enc_outputs_kpt_unact.size(-1)))  # 取出对应的kpts
-            topk_kpts_unact = topk_kpts_unact.detach()
-
-            reference_points = torch.zeros(topk_kpts_unact)
-            reference_points[:, :, 0:3] = topk_kpts_unact[:, :, 0:3].sigmoid()  # [bs, 300, 51], 归一化后的坐标
-            reference_points[:, :, 1:3] = topk_kpts_unact[:, :, 1:3].sigmoid()
-            reference_points[:, :, 2:3] = topk_kpts_unact[:, :, 2:3]  # 深度并没有归一化
+            topk_kpts_unact = topk_kpts_unact.detach()  # 脱离反向传播
             
+            topk_depth = torch.gather(  # [bs, 300, 1 + 15]
+                enc_outputs_depth, 1,
+                topk_proposals.unsqueeze(-1).repeat(
+                    1, 1, enc_outputs_depth.size(-1)))
+            topk_depth = topk_depth.detach()
+            
+            reference_points = topk_kpts_unact.sigmoid()  # [bs, 300, 30], 归一化后的坐标
+            reference_points = torch.cat((reference_points, topk_depth), -1)  # [bs, 300, 30 + 1 + 15]
             init_reference_out = reference_points
+            
             # learnable query and query_pos, query_embed 是随机初始化的。
             query_pos, query = torch.split(query_embed, c, dim=1)  # [300, 256]
             query_pos = query_pos.unsqueeze(0).expand(bs, -1, -1)  # [bs, 300, 256]
@@ -680,7 +714,7 @@ class PETRTransformer3D(Transformer):
         query = query.permute(1, 0, 2)  # [300, bs, 256]
         memory = memory.permute(1, 0, 2)  # [sum(h*w), bs, 256]
         query_pos = query_pos.permute(1, 0, 2)  # [300, bs, 256]
-        inter_states, inter_references = self.decoder(  # [num_dec, 300, bs, 256], [num_dec, bs, 300, 34]
+        inter_states, inter_references = self.decoder(  # [num_dec, 300, bs, 256], [num_dec, bs, 300, 46]
             query=query,
             key=None,
             value=memory,
@@ -690,14 +724,15 @@ class PETRTransformer3D(Transformer):
             spatial_shapes=spatial_shapes,
             level_start_index=level_start_index,
             valid_ratios=valid_ratios,
-            kpt_branches=kpt_branches,
+            kpt_branches=kpt_branches, 
+            depth_braches=depth_braches,
             **kwargs)
 
         inter_references_out = inter_references
         if self.as_two_stage:
             return inter_states, init_reference_out, \
                     inter_references_out, enc_outputs_class, \
-                    enc_outputs_kpt_unact, hm_proto, memory
+                    enc_outputs_kpt_unact, enc_outputs_depth, hm_proto, memory
         return inter_states, init_reference_out, \
                 inter_references_out, None, None, None, None, None, hm_proto
 

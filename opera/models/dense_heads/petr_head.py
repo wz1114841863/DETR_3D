@@ -321,7 +321,6 @@ class PETRHead(AnchorFreeHead):
         kpt_preds, kpt_targets, area_targets, kpt_weights = refine_targets  # 打包的数据
         # [300, 34], [300, 34], [300, ], [300, 34]
         pos_inds = kpt_weights.sum(-1) > 0  # [300]
-        import pdb;pdb.set_trace()
         if pos_inds.sum() == 0:
             pos_kpt_preds = torch.zeros_like(kpt_preds[:1])
             pos_img_inds = kpt_preds.new_zeros([1], dtype=torch.int64)
@@ -502,7 +501,7 @@ class PETRHead(AnchorFreeHead):
         assert gt_bboxes_ignore is None, \
             f'{self.__class__.__name__} only supports ' \
             f'for gt_bboxes_ignore setting to None.'
-
+        import pdb;pdb.set_trace()
         num_dec_layers = len(all_cls_scores)  # 3
         # 将gt_xx复制 nem_dec=3 份，组成一个list。
         all_gt_labels_list = [gt_labels_list for _ in range(num_dec_layers)]
@@ -616,7 +615,7 @@ class PETRHead(AnchorFreeHead):
             gt_areas_list (list[Tensor]): Ground truth mask areas for each
                 image with shape (num_gts, ).
             img_metas (list[dict]): List of image meta information.
-
+        
         Returns:
             dict[str, Tensor]: A dictionary of loss components for outputs from
                 a single decoder layer.
@@ -633,24 +632,24 @@ class PETRHead(AnchorFreeHead):
         label_weights = torch.cat(label_weights_list, 0)
         kpt_targets = torch.cat(kpt_targets_list, 0)
         kpt_weights = torch.cat(kpt_weights_list, 0)
-        area_targets = torch.cat(area_targets_list, 0)
+        area_targets = torch.cat(area_targets_list, 0)  # [bs * 300]
 
         # classification loss
-        cls_scores = cls_scores.reshape(-1, self.cls_out_channels)
+        cls_scores = cls_scores.reshape(-1, self.cls_out_channels)  # [bs*300, 1]
         # construct weighted avg_factor to match with the official DETR repo
         cls_avg_factor = num_total_pos * 1.0 + \
-            num_total_neg * self.bg_cls_weight
+            num_total_neg * self.bg_cls_weight  # number_total_pos
         if self.sync_cls_avg_factor:
             cls_avg_factor = reduce_mean(
                 cls_scores.new_tensor([cls_avg_factor]))
-        cls_avg_factor = max(cls_avg_factor, 1)
+        cls_avg_factor = max(cls_avg_factor, 1)  # 
 
         loss_cls = self.loss_cls(
-            cls_scores, labels, label_weights, avg_factor=cls_avg_factor)
+            cls_scores, labels, label_weights, avg_factor=cls_avg_factor)  # loss_value
 
         # Compute the average number of gt keypoints accross all gpus, for
         # normalization purposes
-        num_total_pos = loss_cls.new_tensor([num_total_pos])
+        num_total_pos = loss_cls.new_tensor([num_total_pos])  # 
         num_total_pos = torch.clamp(reduce_mean(num_total_pos), min=1).item()
 
         # construct factors used for rescale keypoints
@@ -661,10 +660,10 @@ class PETRHead(AnchorFreeHead):
                                             img_h]).unsqueeze(0).repeat(
                                                 kpt_pred.size(0), 1)  # [300, 4]
             factors.append(factor)
-        factors = torch.cat(factors, 0)
+        factors = torch.cat(factors, 0)  # [bs*300, 4]
 
         # keypoint regression loss
-        kpt_preds = kpt_preds.reshape(-1, kpt_preds.shape[-1])  # [300, 34]
+        kpt_preds = kpt_preds.reshape(-1, kpt_preds.shape[-1])  # [bs * 300, 34]
         num_valid_kpt = torch.clamp(
             reduce_mean(kpt_weights.sum()), min=1).item()
         # assert num_valid_kpt == (kpt_targets>0).sum().item()
@@ -807,7 +806,7 @@ class PETRHead(AnchorFreeHead):
         pos_gt_kpts = gt_keypoints[sampling_result.pos_assigned_gt_inds]
         pos_gt_kpts = pos_gt_kpts.reshape(pos_gt_kpts.shape[0],
                                           pos_gt_kpts.shape[-1] // 3, 3)  # [num_gts, 17, 3]
-        valid_idx = pos_gt_kpts[:, :, 2] > 0  # 有效的关键点索引
+        valid_idx = pos_gt_kpts[:, :, 2] > 0  # 有效的关键点索引, [num_gts, 17]
         pos_kpt_weights = kpt_weights[pos_inds].reshape(
             pos_gt_kpts.shape[0], kpt_weights.shape[-1] // 2, 2)  # [num_gts, 17, 2]
         pos_kpt_weights[valid_idx] = 1.0
@@ -815,13 +814,13 @@ class PETRHead(AnchorFreeHead):
             pos_kpt_weights.shape[0], kpt_pred.shape[-1])  # [300, 34]
 
         factor = kpt_pred.new_tensor([img_w, img_h]).unsqueeze(0)  # [1, 2]
-        pos_gt_kpts_normalized = pos_gt_kpts[..., :2]
+        pos_gt_kpts_normalized = pos_gt_kpts[..., :2]  # [num_gts, 17, 2]
         pos_gt_kpts_normalized[..., 0] = pos_gt_kpts_normalized[..., 0] / \
             factor[:, 0:1]  # [num_gts, 17, 2]
         pos_gt_kpts_normalized[..., 1] = pos_gt_kpts_normalized[..., 1] / \
             factor[:, 1:2]  # [num_gts, 17, 2]
         kpt_targets[pos_inds] = pos_gt_kpts_normalized.reshape(
-            pos_gt_kpts.shape[0], kpt_pred.shape[-1])
+            pos_gt_kpts.shape[0], kpt_pred.shape[-1])  # [num_gts, 2]
 
         area_targets = kpt_pred.new_zeros(
             kpt_pred.shape[0])  # get areas for calculating oks  shape: [300, ]

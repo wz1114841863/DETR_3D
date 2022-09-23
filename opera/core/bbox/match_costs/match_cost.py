@@ -129,3 +129,66 @@ class OksCost(object):
             oks_cost.append(-oks)
         oks_cost = torch.cat(oks_cost, dim=1)  # [300, num_gts]
         return oks_cost * self.weight
+
+
+@MATCH_COST.register_module()
+class DepthL1Cost(object):
+    """用来计算深度Cost
+    包括两个方面：
+        参考点的绝对深度Cost
+        十五个关键点的绝对深度Cost
+    # TODO 可能需要进一步考虑和优化Cost的计算方式
+    Args:
+        weight (int | float, optional): loss_weight.
+        
+    Returns:
+        torch.Tensor: depth_cost value with weight.
+    """
+    def __init__(self, 
+                    kpt_depth_weight=1.0,
+                    refer_depth_weight=1.0):
+        self.kpt_depth_weight = kpt_depth_weight
+        self.refer_depth_weight = refer_depth_weight
+        
+    def __call__(self, refer_point_depth, kpt_abs_depth, 
+            gt_keypoints_depth, valid_kpt_flag, img_shape):
+        """求深度损失 及其所占比例
+
+        Args:
+            refer_point_depth (Tensor): 预测的参考点的绝对深度  # [300, 1]
+            kpt_abs_depth (Tensor): 预测的关键点的绝对深度  # [300, 15]
+            gt_keypoints_depth (Tensor): gt_keypoints_depth [N, 15, 5], [Z, fx, fy, cx, cy]
+            valid_kpt_flag (_type_): 有效的关键点标志位， vis, [N, 15, 1]
+            img_shape: [h, w]
+        """
+        kpt_depth_cost = []
+        refer_depth_cost= []
+        for i in range(len(gt_keypoints_depth)):
+            refer_depth_tmp = refer_point_depth.clone()
+            kpt_depth_tmp = kpt_abs_depth.clone()
+            valid_flag = valid_kpt_flag[i] > 0  # [15]
+            
+            # 计算参考点深度损失
+            gt_aver_depth = torch.sum(gt_keypoints_depth[i][valid_flag][0]) / len(gt_keypoints_depth[i][valid_flag][0])
+            refer_cost = torch.abs(refer_depth_tmp - gt_aver_depth)
+        
+            # 计算关键点深度损失
+            kpt_depth_tmp[~valid_flag] = 0  # 无效深度 
+            # FIXME 根据SMAP对深度进行处理
+            depth = gt_keypoints_depth[i][valid_flag][0] / gt_keypoints_depth[i][valid_flag][1]  # Z / fx, [15, ]
+            kpt_cost = torch.cidst(
+                kpt_depth_tmp,
+                depth.unsqueeze(0),  # [1, 15]
+                p=1,)
+            # 
+            avg_factor = torch.clamp(valid_flag.float().sum(), 1.0)
+            kpt_cost = kpt_cost / avg_factor
+            
+            refer_depth_cost.append(refer_cost)
+            kpt_depth_cost.append(kpt_cost)
+            
+        kpt_depth_cost = torch.cat(kpt_depth_cost, dim=1)
+        refer_depth_cost = torch.cat(refer_depth_cost, dim=1)
+        
+        return refer_depth_cost * self.refer_depth_weight, \
+                kpt_depth_cost * self.kpt_depth_weight

@@ -13,7 +13,7 @@ except ImportError:
 
 
 @BBOX_ASSIGNERS.register_module()
-class PoseHungarianAssigner(BaseAssigner):
+class PoseHungarianAssigner3D(BaseAssigner):
     """Computes one-to-one matching between predictions and ground truth.
 
     This class computes an assignment between the targets and the predictions
@@ -39,14 +39,17 @@ class PoseHungarianAssigner(BaseAssigner):
     def __init__(self,
                     cls_cost=dict(type='ClassificationCost', weight=1.0),
                     kpt_cost=dict(type='KptL1Cost', weight=1.0),
-                    oks_cost=dict(type='OksCost', weight=1.0)):
+                    oks_cost=dict(type='OksCost', weight=1.0),
+                    depth_cost=dict(type='DepthL1Cost', weight=1.0)):
         self.cls_cost = build_match_cost(cls_cost)
         self.kpt_cost = build_match_cost(kpt_cost)
         self.oks_cost = build_match_cost(oks_cost)
+        self.depth_cost = build_match_cost(depth_cost)
 
     def assign(self,
                 cls_pred,
                 kpt_pred,
+                kpt_depth,
                 gt_labels,
                 gt_keypoints,
                 gt_areas,
@@ -71,12 +74,12 @@ class PoseHungarianAssigner(BaseAssigner):
             cls_pred (Tensor): Predicted classification logits, shape
                 [num_query, num_class].
             kpt_pred (Tensor): Predicted keypoints with normalized coordinates
-                (x_{i}, y_{i}), which are all in range [0, 1]. Shape
-                [num_query, K*2].
+                (x_{i}, y_{i}), which are all in range [0, 1], reference point depth
+                and keypoints releative depth Shape [num_query, K*2].
+            kpt_depth:reference point depth and keypoints releative depth.
             gt_labels (Tensor): Label of `gt_keypoints`, shape (num_gt,).
             gt_keypoints (Tensor): Ground truth keypoints with unnormalized
-                coordinates [p^{1}_x, p^{1}_y, p^{1}_v, ..., \
-                    p^{K}_x, p^{K}_y, p^{K}_v]. Shape [num_gt, K*3].
+                coordinates and depth. Shape [num_gt, 15, 11].
             gt_areas (Tensor): Ground truth mask areas, shape (num_gt,).
             img_meta (dict): Meta information for current image.
             eps (int | float, optional): A value added to the denominator for
@@ -85,15 +88,14 @@ class PoseHungarianAssigner(BaseAssigner):
         Returns:
             :obj:`AssignResult`: The assigned result.
         """
-        num_gts, num_kpts = gt_keypoints.size(0), kpt_pred.size(0)
+        num_gts, num_kpts = gt_keypoints.size(0), kpt_pred.size(0)  # gt个数 和 预测个数
 
         # 1. assign -1 by default
         assigned_gt_inds = kpt_pred.new_full((num_kpts, ),
-                                            -1,  
-                                            dtype=torch.long)  # 300
+                                        -1, dtype=torch.long)  # 300
         assigned_labels = kpt_pred.new_full((num_kpts, ),
-                                            -1,
-                                            dtype=torch.long)  # 300
+                                        -1, dtype=torch.long)  # 300
+        
         if num_gts == 0 or num_kpts == 0:
             # No ground truth or keypoints, return empty assignment
             if num_gts == 0:
@@ -101,31 +103,52 @@ class PoseHungarianAssigner(BaseAssigner):
                 assigned_gt_inds[:] = 0
             return AssignResult(
                 num_gts, assigned_gt_inds, None, labels=assigned_labels)
+        
+        # factor    
         img_h, img_w, _ = img_meta['img_shape']
         factor = gt_keypoints.new_tensor([img_w, img_h, img_w,
                                             img_h]).unsqueeze(0)  # [1, 4]
+        dataset = img_meta['dataset']
 
         # 2. compute the weighted costs
         # classification cost
         cls_cost = self.cls_cost(cls_pred, gt_labels)  # [300, num_gts]
 
         # keypoint regression L1 cost
-        gt_keypoints_reshape = gt_keypoints.reshape(gt_keypoints.shape[0], -1, 3)  # [num_gts, 17, 3]
-        valid_kpt_flag = gt_keypoints_reshape[..., -1]  # [num_gts, 17]
+        gt_keypoints_reshape = gt_keypoints[..., :2]  # [num_gts, 15, 2], (x,y)
+        valid_kpt_flag = gt_keypoints[..., 3]  # [num_gts, 15], vis
         kpt_pred_tmp = kpt_pred.clone().detach().reshape(
-            kpt_pred.shape[0], -1, 2)  # [300, 17, 2]
+            kpt_pred.shape[0], -1, 2)  # [300, 15, 2]
         normalize_gt_keypoints = gt_keypoints_reshape[
-            ..., :2] / factor[:, :2].unsqueeze(0)  # [num_gts, 17, 2]
+            ..., :2] / factor[:, :2].unsqueeze(0)  # [num_gts, 15, 2]
         kpt_cost = self.kpt_cost(kpt_pred_tmp, normalize_gt_keypoints,
                                     valid_kpt_flag)  # [300, num_kpt]
+        
         # keypoint OKS cost
         kpt_pred_tmp = kpt_pred.clone().detach().reshape(
-            kpt_pred.shape[0], -1, 2)  # [300, 17, 2]
+            kpt_pred.shape[0], -1, 2)  # [300, 15, 2]
         kpt_pred_tmp = kpt_pred_tmp * factor[:, :2].unsqueeze(0)  # 归一化后的坐标 * 图像尺寸
         oks_cost = self.oks_cost(kpt_pred_tmp, gt_keypoints_reshape[..., :2],
                                     valid_kpt_flag, gt_areas)  # [300, num_kpt]
+        
+        # keypoint Depth cost
+        if dataset == "COCO":
+            refer_depth_cost = 0 
+            kpt_depth_cost = 0
+        elif dataset == "MUCO":
+            gt_keypoints_depth = gt_keypoints[..., -5:]  # [numt_gts, 15, 5] ,[Z, fx, fy, cx, cy]
+            depth_pred_tmp = kpt_depth.clone().detach() # [300, 1 + 15]
+            refer_point_depth = depth_pred_tmp[..., 0]  # [300, 1], reference point 绝对深度
+            kpt_real_depth = depth_pred_tmp[..., 1:]  # [300, 15], keypoints 相对深度
+            kpt_abs_depth = kpt_real_depth + refer_point_depth  # [300, 15], keypoints 绝对深度
+        
+            refer_depth_cost, kpt_depth_cost = self.depth_cost(refer_point_depth, kpt_abs_depth, 
+                gt_keypoints_depth, valid_kpt_flag, img_meta['img_shape'])  # 需要是： [300, num_kpt]
+        else:
+            raise NotImplementedError("未知的dataset in hungarisn_assigner.")
+        
         # weighted sum of above three costs
-        cost = cls_cost + kpt_cost + oks_cost  # [300, num_kpt]
+        cost = cls_cost + kpt_cost + oks_cost + refer_depth_cost + kpt_depth_cost  # [300, num_kpt]
 
         # 3. do Hungarian matching on CPU using linear_sum_assignment
         cost = cost.detach().cpu()
@@ -137,7 +160,7 @@ class PoseHungarianAssigner(BaseAssigner):
             kpt_pred.device)
         matched_col_inds = torch.from_numpy(matched_col_inds).to(
             kpt_pred.device)
-        import pdb;pdb.set_trace()
+
         # 4. assign backgrounds and foregrounds
         # assign all indices to backgrounds first
         assigned_gt_inds[:] = 0

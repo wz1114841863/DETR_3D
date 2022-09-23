@@ -855,7 +855,6 @@ class PETRTransformer(Transformer):
             hm_memory = hm_memory.permute(1, 0, 2).reshape(bs,  # [bs, h1, w1, 256]
                 spatial_shapes[0, 0], spatial_shapes[0, 1], -1)
             hm_proto = (hm_memory, mlvl_masks[0])  # tuple
-        import pdb; pdb.set_trace()
         if self.as_two_stage:
             output_memory, output_proposals = \
                 self.gen_encoder_output_proposals(

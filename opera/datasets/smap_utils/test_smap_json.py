@@ -13,7 +13,7 @@ def load_smap_coco():
     # print(len(annos['root']))
     return annos
 
-def load_smao_muco():
+def load_smap_muco():
     smap_muco_path = "/data/MuCo/annotations/MuCo.json"
     with open(file=smap_muco_path, mode='r') as fp:
         annos = json.load(fp)
@@ -21,7 +21,8 @@ def load_smao_muco():
     return annos
 
 if __name__ == "__main__":
-    annos = load_smap_coco()
+    # annos = load_smap_coco()
+    annos = load_smap_muco()
     annos = annos['root']
     img_prefix = "/data/coco/"
     img_path = img_prefix + annos[0]['img_paths']

@@ -15,8 +15,9 @@ train_pipeline = [
         type='opera.LoadAnnosFromFile', 
         with_dataset=True,
         with_bbox=True,
+        with_label=True,
         with_keypoints=True,
-        with_label=False,
+        with_areas=True,
     ),
     dict(
         type='mmdet.PhotoMetricDistortion',
@@ -101,9 +102,9 @@ train_pipeline = [
     dict(type='mmdet.Normalize', **img_norm_cfg),
     dict(type='mmdet.Pad', size_divisor=1),  # 使用0填充图像边缘
     dict(type='opera.FormatBundle',
-            extra_keys=['gt_keypoints', 'gt_bboxs']),
+            extra_keys=['gt_keypoints', 'gt_bboxs', 'gt_areas']),
     dict(type='mmdet.Collect',
-            keys=['img', 'gt_bboxs', 'gt_keypoints', 'ann_info', 'dataset']),
+            keys=['img', 'gt_bboxs', 'gt_keypoints', 'gt_areas', 'ann_info', 'dataset']),
 ]
 
 # 尚未修改

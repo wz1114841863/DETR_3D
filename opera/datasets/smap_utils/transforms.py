@@ -14,8 +14,9 @@ FLIP_ORDER = [0, 1, 2, 9, 10, 11, 12, 13, 14, 3, 4, 5, 6, 7, 8]
 """
 以下的操作均不涉及3D坐标, 可能存在一定的问题，待解决。
 目前仅对 [x, y, Z, v, X, Y, Z, fx, fy, cx, cy] 中
-    x, y,做相应的变换处理。
-还需要对 X, Y, Z, fx, fy, cx, cy 等做处理。
+    x, y,做相应的变换处理
+还需要对 X, Y, Z, fx, fy, cx, cy 等做处理
+对2d坐标做变换不影响深度Z
 """
 
 
@@ -25,6 +26,7 @@ class AugRandomFlip(MMDetRandomFlip):
     分为两种情况：
         COCO:
         MuCo:
+    不影响fx, fy, cx, cy
     Return:
         add new keys:
             ['flip', 'flip_direction']
@@ -38,7 +40,7 @@ class AugRandomFlip(MMDetRandomFlip):
         """水平翻转关键点坐标。
 
         注: 这里仅翻转了2d坐标中的x和交换了对应的关键点坐标, 但并未修改3d 坐标中的
-        X, 是否存在问题。
+        X, Y 是否存在问题。
         """
         # 翻转所有关键点
         keypoints = results['gt_keypoints'].copy()
@@ -130,7 +132,7 @@ class AugRandomFlip(MMDetRandomFlip):
 @PIPELINES.register_module()
 class AugRandomRotate():
     """旋转图片,获取旋转矩阵
-    
+    MuCo的area是由bbox乘积而来，旋转之后，bbox重新计算，area重新计算
     Return:
         add new keys:
 
@@ -197,7 +199,6 @@ class AugRandomRotate():
             for i in range(len(keypoints)):  # [person_num, 15, 11]
                 keypoints[i][:, :2] = self._rotate_coordinate(keypoints[i][:, :2], self.M)
             
-            
             # 无效关键点重新置0
             for n in range(len(keypoints)):
                 for j in range(15):
@@ -216,9 +217,10 @@ class AugRandomRotate():
         """
         for key in results.get('bbox_fields', ['gt_bboxs']):
             bboxs = results[key].copy()
+            # 处理MuCo的areas
+            areas = results['gt_areas'].copy()
             for i in range(len(bboxs)):  # [person_num, 4]
                 bbox = bboxs[i]
-                
                 top_left = np.asarray((min(bbox[0], bbox[2]), min(bbox[1], bbox[3])))
                 top_right = np.asarray((max(bbox[0], bbox[2]), min(bbox[1], bbox[3])))
                 bottom_left = np.asarray((min(bbox[0], bbox[2]), max(bbox[1], bbox[3])))
@@ -238,11 +240,16 @@ class AugRandomRotate():
                 [max_x, max_y] = np.max(coords, axis=0)
                 # 注: 如果图片进行填充，这里的bbox就不会越出边界。
                 bboxs[i] = [min_x, min_y, max_x, max_y]
+                
+                if results['dataset'] == "MUCO":
+                    areas[i] = (max_x - min_x) * (max_y - min_y)
             # 越界处理
             img_shape = results['img_shape']
             bboxs[:, 0::2] = np.clip(bboxs[:, 0::2], 0, img_shape[1])
             bboxs[:, 1::2] = np.clip(bboxs[:, 1::2], 0, img_shape[0])  
             results[key] = bboxs
+            results['gt_areas'] = areas
+
         return results
     
     def __call__(self, results):
@@ -266,7 +273,8 @@ class AugRandomRotate():
 @PIPELINES.register_module()
 class AugResize(MMDetResize):
     """Resize img, bbox, keypoints
-    
+    存在的问题：
+        如果keypoints被裁剪，而COCO数据集的areas未做对应处理
     Return:
         add new keys:
             ['scale', 'scale_idx', 'scale_factor', 'keep_ratio']
@@ -311,7 +319,15 @@ class AugResize(MMDetResize):
             results['keep_ratio'] = self.keep_ratio
             
     def _resize_bboxes(self, results):
-        return super()._resize_bboxes(results)
+        super()._resize_bboxes(results)
+        if results['dataset'] == "MUCO":
+            bboxs = results['gt_bboxs'].copy()
+            areas = results['gt_areas'].copy()
+            for i in range(len(areas)):
+                [min_x, min_y, max_x, max_y] = bboxs[i]
+                areas[i] = (max_x - min_x) * (max_y - min_y)
+            results['gt_areas'] = areas
+        return
     
     def _resize_keypoints(self, results):
         # Resize 所有关键点
@@ -374,7 +390,8 @@ class AugResize(MMDetResize):
 @PIPELINES.register_module()
 class AugCrop(MMDetRandomCrop):
     """随机裁剪 img, bbox, keypoints
-
+    存在的问题：
+        如果keypoints被裁剪，而COCO数据集的areas未做对应处理
     """
     def __init__(self, 
                     *args,
@@ -449,6 +466,15 @@ class AugCrop(MMDetRandomCrop):
                             keypoints[n][j] = [0 for _ in range(11)]
                             
                 results[key] = keypoints
+                
+        if results['dataset'] == "MUCO":
+            bboxs = results['gt_bboxs'].copy()
+            areas = results['gt_areas'].copy()
+            for i in range(len(areas)):
+                [min_x, min_y, max_x, max_y] = bboxs[i]
+                areas[i] = (max_x - min_x) * (max_y - min_y)
+            results['gt_areas'] = areas
+            
         return results
                 
     def __repr__(self):

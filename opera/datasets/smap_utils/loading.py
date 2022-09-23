@@ -82,10 +82,12 @@ class LoadAnnosFromFile(MMDetLoadAnnotations):
                 *args,
                 with_dataset=True, 
                 with_keypoints=True,
+                with_areas=True,
                 **kwargs):
         super(LoadAnnosFromFile, self).__init__(*args, **kwargs)
         self.with_dataset = with_dataset
         self.with_keypoints = with_keypoints
+        self.with_areas = with_areas
     
     def _load_bboxes(self, results):
         bboxs = results['ann_info']['bboxs'].copy()
@@ -128,6 +130,29 @@ class LoadAnnosFromFile(MMDetLoadAnnotations):
         results['gt_keypoints_flag'] = keypoints_flag
         return results
     
+    def _load_areas(self, results):
+        """加载areas
+        用于计算oks loss
+        """
+        areas = results['ann_info']['areas'].copy()
+        results['gt_areas'] = np.asarray(areas)
+        results['areas_fields'] = ['gt_areas']
+        return results
+    
+    def _load_labels(self, results):
+        """原始annotations中不包括labels。
+        由于label只有一种，故根据bbox个数添加
+        Args:
+            results (_type_): _description_
+        """
+        bboxs = results['gt_bboxs']
+        keypoints = results['gt_keypoints']
+        assert bboxs.shape[0] == keypoints.shape[0], f"bboxs 和 keypoints的长度应该保持一致"
+        num_person = bboxs.shape[0]
+        labels = [0 for _ in range(num_person)]
+        results['gt_labels'] = np.asarray(labels)
+        return results
+
     def __call__(self, results):
         results = super(LoadAnnosFromFile, self).__call__(results)
         
@@ -139,11 +164,15 @@ class LoadAnnosFromFile(MMDetLoadAnnotations):
             
         if self.with_keypoints:
             results = self._load_keypoints(results)
+        
+        if self.with_areas:
+            results = self._load_areas(results)
             
         return results
     
     def __repr__(self):
         repr_str = super(LoadAnnosFromFile, self).__repr__()[:-1] + ', '
         repr_str += f'with_dataset={self.with_dataset}, '
-        repr_str += f'with_keypoint={self.with_keypoints}, '
+        repr_str += f'with_keypoints={self.with_keypoints}, '
+        repr_str += f'with_areas={self.with_areas}, '
         return repr_str
