@@ -35,6 +35,7 @@ def parse_args():
     parser.add_argument(
         '--no-validate',
         action='store_true',
+        default='False',
         help='whether not to evaluate the checkpoint during training')
     group_gpus = parser.add_mutually_exclusive_group()
     group_gpus.add_argument(

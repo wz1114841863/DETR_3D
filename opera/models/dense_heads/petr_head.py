@@ -501,7 +501,6 @@ class PETRHead(AnchorFreeHead):
         assert gt_bboxes_ignore is None, \
             f'{self.__class__.__name__} only supports ' \
             f'for gt_bboxes_ignore setting to None.'
-        import pdb;pdb.set_trace()
         num_dec_layers = len(all_cls_scores)  # 3
         # 将gt_xx复制 nem_dec=3 份，组成一个list。
         all_gt_labels_list = [gt_labels_list for _ in range(num_dec_layers)]

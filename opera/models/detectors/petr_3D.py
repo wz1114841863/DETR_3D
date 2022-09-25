@@ -16,7 +16,7 @@ from ..builder import DETECTORS
 
 
 @DETECTORS.register_module()
-class PETR(DETR):
+class PETR3D(DETR):
     """Implementation of `End-to-End Multi-Person Pose Estimation with
     Transformers`"""
 
@@ -26,6 +26,7 @@ class PETR(DETR):
     def forward_train(self,
                         img,
                         img_metas,
+                        dataset,
                         gt_bboxes,
                         gt_labels,
                         gt_keypoints,
@@ -55,10 +56,8 @@ class PETR(DETR):
         """
         super(SingleStageDetector, self).forward_train(img, img_metas)  # BaseDetector.forward_train()
         x = self.extract_feat(img)  # x: [bs, 256, H / 8 ..., W / 8 ...], len(x) = 4
-        losses = self.bbox_head.forward_train(x, img_metas, gt_bboxes,
-                                                gt_labels, gt_keypoints,
-                                                gt_areas, gt_bboxes_ignore) 
-        import pdb;pdb.set_trace()
+        losses = self.bbox_head.forward_train(x, img_metas, dataset, gt_bboxes,
+                gt_labels, gt_keypoints, gt_areas, gt_bboxes_ignore)
         return losses
 
     def forward_dummy(self, img):

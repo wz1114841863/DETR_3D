@@ -96,6 +96,11 @@ class OKSLoss(nn.Module):
                 .79, .79, .72, .72, .62, .62, 1.07, 1.07, .87, .87, .89, .89,
                 .79, .79
             ]) / 10.0
+        elif num_keypoints == 15:
+            self.sigmas = np.array([
+                .79, .26, 1.07, .79, .72, .62, 1.07, .87, .89, .79, .72, .62, 
+                1.07, .87, .89,
+            ]) / 10.0
         else:
             raise ValueError(f'Unsupported keypoints number {num_keypoints}')
 

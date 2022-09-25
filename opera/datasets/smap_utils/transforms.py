@@ -81,7 +81,7 @@ class AugRandomFlip(MMDetRandomFlip):
             results:
         """
         img_shape = results['img_shape']  # (h, w)
-        for key in results.get('bbox_fields', ['gt_bboxs']):
+        for key in results.get('bbox_fields', ['gt_bboxes']):
             bboxs = results[key]  # [person_num, 4]")
             assert bboxs.shape[1] == 4, "the shape of bbox isn't 4."
             flip_bboxs = bboxs.copy()
@@ -215,7 +215,7 @@ class AugRandomRotate():
         Args:
             results (_type_): _description_
         """
-        for key in results.get('bbox_fields', ['gt_bboxs']):
+        for key in results.get('bbox_fields', ['gt_bboxes']):
             bboxs = results[key].copy()
             # 处理MuCo的areas
             areas = results['gt_areas'].copy()
@@ -321,12 +321,8 @@ class AugResize(MMDetResize):
     def _resize_bboxes(self, results):
         super()._resize_bboxes(results)
         if results['dataset'] == "MUCO":
-            bboxs = results['gt_bboxs'].copy()
+            bboxs = results['gt_bboxes'].copy()
             areas = results['gt_areas'].copy()
-            for i in range(len(areas)):
-                [min_x, min_y, max_x, max_y] = bboxs[i]
-                areas[i] = (max_x - min_x) * (max_y - min_y)
-            results['gt_areas'] = areas
         return
     
     def _resize_keypoints(self, results):
@@ -420,7 +416,7 @@ class AugCrop(MMDetRandomCrop):
         results['img_shape'] = img_shape        
 
         # crop bboxes accordingly and clip to the image boundary
-        for key in results.get('bbox_fields', ['gt_bboxs']):
+        for key in results.get('bbox_fields', ['gt_bboxes']):
             bbox_offset = np.array([offset_w, offset_h, offset_w, offset_h],
                                     dtype=np.float32)
             bboxes = results[key] - bbox_offset  # 注意这里是减去偏移。
@@ -466,14 +462,6 @@ class AugCrop(MMDetRandomCrop):
                             keypoints[n][j] = [0 for _ in range(11)]
                             
                 results[key] = keypoints
-                
-        if results['dataset'] == "MUCO":
-            bboxs = results['gt_bboxs'].copy()
-            areas = results['gt_areas'].copy()
-            for i in range(len(areas)):
-                [min_x, min_y, max_x, max_y] = bboxs[i]
-                areas[i] = (max_x - min_x) * (max_y - min_y)
-            results['gt_areas'] = areas
             
         return results
                 
@@ -481,3 +469,112 @@ class AugCrop(MMDetRandomCrop):
         repr_str = super(AugCrop, self).__repr__()[:-1] + ', '
         repr_str += f'kpt_clip_border={self.kpt_clip_border})'
         return repr_str
+
+
+@PIPELINES.register_module()
+class AugConstraint():
+    """
+    对关键点的坐标，bbox的坐标做限制。
+    判断各个gt的长度。
+    """
+    def __init__(self, 
+                    with_cons_coord=True,
+                    with_cons_length=True,
+                    with_cons_areas=True):
+        self.with_cons_coord = with_cons_coord
+        self.with_cons_length = with_cons_length
+        self.with_cons_areas = with_cons_areas
+
+    @staticmethod
+    def _cons_coord(results):
+        img_shape = results['img'].shape
+        results['img_shape']= img_shape
+
+        keypoints = results['gt_keypoints'].copy()
+        keypoints[:, 0] = np.clip(keypoints[:, 0], 0, img_shape[1] - 1)
+        keypoints[:, 1] = np.clip(keypoints[:, 1], 0, img_shape[0] - 1)
+        # 无效关键点重新置0
+        for n in range(len(keypoints)):
+            for j in range(15):
+                if results['gt_keypoints_flag'][n][j][0] == 0:
+                    keypoints[n][j] = [0 for _ in range(11)]
+        results['gt_keypoints'] = keypoints
+
+        bboxes = results['gt_bboxes']
+        bboxes[:, 0::2] = np.clip(bboxes[:, 0::2], 0, img_shape[1] - 1)
+        bboxes[:, 1::2] = np.clip(bboxes[:, 1::2], 0, img_shape[0] - 1)  
+        results['gt_bboxes'] = bboxes
+
+        return results
+
+    @staticmethod
+    def _cons_length(results):
+        # 验证：
+        assert len(results['gt_bboxes']) == len(results['gt_areas']), \
+            f"len_bboxes: {len(results['gt_bboxes'])}, len_areas: {len(results['gt_areas'])}"
+
+        assert len(results['gt_bboxes']) == len(results['gt_keypoints']), \
+            f"len_bboxes: {len(results['gt_bboxes'])}, len_areas: {len(results['gt_keypoints'])}"
+
+        assert len(results['gt_bboxes']) == len(results['gt_labels']), \
+            f"len_bboxes: {len(results['gt_bboxes'])}, len_areas: {len(results['gt_labels'])}"
+
+        return results
+
+    @staticmethod
+    def _cons_areas(results):
+        if results['dataset'] == "MUCO":
+            bboxs = results['gt_bboxes'].copy()
+            areas = []
+            bboxs = results['gt_bboxes']
+            for i in range(len(bboxs)):
+                [left_top_x, left_top_y, right_bottom_x, right_bottom_y] = bboxs[i]
+                area = (right_bottom_x - left_top_x) * (right_bottom_y - left_top_y)
+                areas.append(area)
+                
+            results['gt_areas'] = np.asarray(areas)
+        return results
+
+    @staticmethod
+    def _cons_kpts(results):
+        """
+            对 keypoints 的 num_vis_kpt 做判断
+        """
+        kpts = results['gt_keypoints'].copy()
+        bboxes = results['gt_bboxes'].copy()
+        areas = results['gt_areas'].copy()
+        labels = results['gt_labels'].copy()
+
+        new_kpts = []
+        new_bboxes = []
+        new_areas = []
+        new_labels = []
+        for i in range(len(kpts)):  # num_gts
+            vis = kpts[i][:, 2] > 0
+            assert vis.shape[0] == 15
+            if vis.sum() != 0:
+                new_kpts.append(kpts[i])
+                new_bboxes.append(bboxes[i])
+                new_areas.append(areas[i])
+                new_labels.append(labels[i])
+
+        results['gt_keypoints'] = np.asarray(new_kpts)
+        results['gt_bboxes'] = np.asarray(new_bboxes)
+        results['gt_areas'] = np.asarray(new_areas)
+        results['gt_labels'] = np.asarray(new_labels)
+
+        return results
+
+    def __call__(self, results):
+
+        if self.with_cons_coord:
+            results = self._cons_coord(results)
+
+        if self.with_cons_length:
+            results = self._cons_length(results)
+
+        if self.with_cons_areas:
+            results = self._cons_areas(results)
+
+        results = self._cons_kpts(results)
+        return results 

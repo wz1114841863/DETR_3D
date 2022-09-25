@@ -208,7 +208,7 @@ def train_model(model,
     # register eval hooks
     if validate:
         val_dataloader_default_args = dict(
-            samples_per_gpu=1,
+            samples_per_gpu=2,
             workers_per_gpu=2,
             dist=distributed,
             shuffle=False,

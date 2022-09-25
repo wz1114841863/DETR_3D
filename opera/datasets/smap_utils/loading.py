@@ -76,7 +76,7 @@ class LoadAnnosFromFile(MMDetLoadAnnotations):
         with_bbox:(bool):
     Return:
         add new keys:
-            ['gt_bboxs', 'dataset', 'gt_keypoints', 'keypoints_fields', ['gt_keypoints_flag']]
+            ['gt_bboxes', 'dataset', 'gt_keypoints', 'keypoints_fields', ['gt_keypoints_flag']]
     """
     def __init__(self, 
                 *args,
@@ -104,8 +104,8 @@ class LoadAnnosFromFile(MMDetLoadAnnotations):
             right_bottom_y = max(bboxs[i][1], bboxs[i][3])
             bbox = [left_top_x, left_top_y, right_bottom_x, right_bottom_y]
             bboxs[i] = bbox
-        results['gt_bboxs'] = bboxs
-        results['bbox_fields'] = ['gt_bboxs']
+        results['gt_bboxes'] = bboxs
+        results['bbox_fields'] = ['gt_bboxes']
         return results
     
     def _load_dataset(self, results):
@@ -134,18 +134,27 @@ class LoadAnnosFromFile(MMDetLoadAnnotations):
         """加载areas
         用于计算oks loss
         """
-        areas = results['ann_info']['areas'].copy()
+        if results['dataset'] == "COCO":
+            areas = results['ann_info']['areas'].copy()
+        elif results['dataset'] == "MUCO":
+            areas = []
+            bboxs = results['gt_bboxes']
+            for i in range(len(bboxs)):
+                [left_top_x, left_top_y, right_bottom_x, right_bottom_y] = bboxs[i]
+                area = (right_bottom_x - left_top_x) * (right_bottom_y - left_top_y)
+                areas.append(area)
+        # areas = results['ann_info']['areas'].copy()
         results['gt_areas'] = np.asarray(areas)
         results['areas_fields'] = ['gt_areas']
         return results
     
     def _load_labels(self, results):
         """原始annotations中不包括labels。
-        由于label只有一种，故根据bbox个数添加
+        由于label只有一种, 故根据bbox个数添加
         Args:
             results (_type_): _description_
         """
-        bboxs = results['gt_bboxs']
+        bboxs = results['gt_bboxes']
         keypoints = results['gt_keypoints']
         assert bboxs.shape[0] == keypoints.shape[0], f"bboxs 和 keypoints的长度应该保持一致"
         num_person = bboxs.shape[0]
@@ -154,20 +163,25 @@ class LoadAnnosFromFile(MMDetLoadAnnotations):
         return results
 
     def __call__(self, results):
-        results = super(LoadAnnosFromFile, self).__call__(results)
-        
-        if results is None:
-            return None
-        
+
         if self.with_dataset:
             results = self._load_dataset(results)
             
         if self.with_keypoints:
             results = self._load_keypoints(results)
         
+        if self.with_bbox:
+            results = self._load_bboxes(results)
+
         if self.with_areas:
             results = self._load_areas(results)
-            
+
+        if self.with_label:
+            results = self._load_labels(results)
+        
+        if results is None:
+            return None
+
         return results
     
     def __repr__(self):

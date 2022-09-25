@@ -137,7 +137,6 @@ class PoseHungarianAssigner(BaseAssigner):
             kpt_pred.device)
         matched_col_inds = torch.from_numpy(matched_col_inds).to(
             kpt_pred.device)
-        import pdb;pdb.set_trace()
         # 4. assign backgrounds and foregrounds
         # assign all indices to backgrounds first
         assigned_gt_inds[:] = 0

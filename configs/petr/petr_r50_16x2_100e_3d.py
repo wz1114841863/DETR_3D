@@ -2,7 +2,7 @@ _base_ = [
     '../_base_/datasets/coco_muco_keypoint_3d.py', '../_base_/default_runtime.py'
 ]
 model = dict(
-    type='opera.PETR',
+    type='opera.PETR3D',
     
     backbone=dict(
         type='mmdet.ResNet',
@@ -32,6 +32,7 @@ model = dict(
         num_keypoints=15, # 关键点个数变为15
         sync_cls_avg_factor=True,
         with_kpt_refine=True,
+        with_depth_refine=False,
         as_two_stage=True,
         transformer=dict(
             type='opera.PETRTransformer3D',
@@ -47,7 +48,7 @@ model = dict(
                     ffn_dropout=0.1,
                     operation_order=('self_attn', 'norm', 'ffn', 'norm'))),
             decoder=dict(
-                type='opera.PetrTransformerDecoder',
+                type='opera.PetrTransformerDecoder3D',
                 num_layers=3,
                 return_intermediate=True,
                 transformerlayers=dict(
@@ -59,13 +60,14 @@ model = dict(
                             num_heads=8,
                             dropout=0.1),
                         dict(
-                            type='opera.MultiScaleDeformablePoseAttention',
+                            type='opera.MultiScaleDeformablePoseAttention3D',
                             embed_dims=256)
                     ],
                     feedforward_channels=1024,
                     ffn_dropout=0.1,
                     operation_order=('self_attn', 'norm', 'cross_attn', 'norm',
-                                        'ffn', 'norm'))
+                                        'ffn', 'norm')
+                )
             ),
             hm_encoder=dict(
                 type='mmcv.DetrTransformerEncoder',
@@ -78,7 +80,9 @@ model = dict(
                         num_levels=1),
                     feedforward_channels=1024,
                     ffn_dropout=0.1,
-                    operation_order=('self_attn', 'norm', 'ffn', 'norm'))),
+                    operation_order=('self_attn', 'norm', 'ffn', 'norm'),
+                ),
+            ),
             refine_decoder=dict(
                 type='mmcv.DeformableDetrTransformerDecoder',
                 num_layers=2,
@@ -99,7 +103,10 @@ model = dict(
                     feedforward_channels=1024,
                     ffn_dropout=0.1,
                     operation_order=('self_attn', 'norm', 'cross_attn', 'norm',
-                                        'ffn', 'norm')))),
+                                        'ffn', 'norm'),
+                ),
+            ),
+        ),
         
         positional_encoding=dict(
             type='mmcv.SinePositionalEncoding',
@@ -116,18 +123,23 @@ model = dict(
         
         loss_kpt=dict(type='mmdet.L1Loss', loss_weight=70.0),
         loss_kpt_rpn=dict(type='mmdet.L1Loss', loss_weight=70.0),
-        loss_oks=dict(type='opera.OKSLoss', loss_weight=2.0),
+        loss_oks=dict(type='opera.OKSLoss', num_keypoints=15, loss_weight=2.0),
         loss_hm=dict(type='opera.CenterFocalLoss', loss_weight=4.0),
         loss_kpt_refine=dict(type='mmdet.L1Loss', loss_weight=80.0),
-        loss_oks_refine=dict(type='opera.OKSLoss', loss_weight=3.0)),
-        loss_depth=dict(type='mmdet.L1Loss', loss_weight=70.0),
-    
+        loss_oks_refine=dict(type='opera.OKSLoss', num_keypoints=15, loss_weight=3.0),
+        loss_depth=dict(type='mmdet.L1Loss', loss_weight=0.007),
+        loss_depth_rpn=dict(type='mmdet.L1Loss', loss_weight=0.007,
+        ),
+    ),
     train_cfg=dict(
         assigner=dict(
-            type='opera.PoseHungarianAssigner',
+            type='opera.PoseHungarianAssigner3D',
             cls_cost=dict(type='mmdet.FocalLossCost', weight=2.0),
             kpt_cost=dict(type='opera.KptL1Cost', weight=70.0),
-            oks_cost=dict(type='opera.OksCost', weight=7.0)
+            oks_cost=dict(type='opera.OksCost', num_keypoints=15, weight=7.0),
+            depth_cost=dict(type='opera.DepthL1Cost', 
+                kpt_depth_weight=0.001, 
+                refer_depth_weight=0.001),  # TODO 优化DepthL1Loss
         )
     ),
     

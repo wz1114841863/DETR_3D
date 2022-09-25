@@ -1,4 +1,3 @@
-LICENSE
 README.md
 setup.cfg
 setup.py
@@ -19,6 +18,7 @@ opera/core/bbox/__init__.py
 opera/core/bbox/builder.py
 opera/core/bbox/assigners/__init__.py
 opera/core/bbox/assigners/hungarian_assigner.py
+opera/core/bbox/assigners/hungarian_assigner_3d.py
 opera/core/bbox/match_costs/__init__.py
 opera/core/bbox/match_costs/builder.py
 opera/core/bbox/match_costs/match_cost.py
@@ -30,6 +30,7 @@ opera/core/post_processing/__init__.py
 opera/core/runner/__init__.py
 opera/datasets/__init__.py
 opera/datasets/builder.py
+opera/datasets/coco_muco_pose_3d.py
 opera/datasets/coco_pose.py
 opera/datasets/crowd_pose.py
 opera/datasets/utils.py
@@ -37,12 +38,19 @@ opera/datasets/pipelines/__init__.py
 opera/datasets/pipelines/formatting.py
 opera/datasets/pipelines/loading.py
 opera/datasets/pipelines/transforms.py
+opera/datasets/smap_utils/__init__.py
+opera/datasets/smap_utils/formatting.py
+opera/datasets/smap_utils/loading.py
+opera/datasets/smap_utils/test_smap_json.py
+opera/datasets/smap_utils/transforms.py
+opera/datasets/smap_utils/vis_img.py
 opera/models/__init__.py
 opera/models/builder.py
 opera/models/backbones/__init__.py
 opera/models/dense_heads/__init__.py
 opera/models/dense_heads/inspose_head.py
 opera/models/dense_heads/petr_head.py
+opera/models/dense_heads/petr_head_3d.py
 opera/models/dense_heads/soit_head.py
 opera/models/detectors/__init__.py
 opera/models/detectors/inspose.py
@@ -57,3 +65,4 @@ opera/models/utils/__init__.py
 opera/models/utils/builder.py
 opera/models/utils/positional_encoding.py
 opera/models/utils/transformer.py
+opera/models/utils/transformer_3d.py

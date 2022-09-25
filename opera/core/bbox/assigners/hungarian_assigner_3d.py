@@ -49,10 +49,11 @@ class PoseHungarianAssigner3D(BaseAssigner):
     def assign(self,
                 cls_pred,
                 kpt_pred,
-                kpt_depth,
+                depth_pred,
                 gt_labels,
                 gt_keypoints,
                 gt_areas,
+                dataset,
                 img_meta,
                 eps=1e-7):
         """Computes one-to-one matching based on the weighted costs.
@@ -108,8 +109,6 @@ class PoseHungarianAssigner3D(BaseAssigner):
         img_h, img_w, _ = img_meta['img_shape']
         factor = gt_keypoints.new_tensor([img_w, img_h, img_w,
                                             img_h]).unsqueeze(0)  # [1, 4]
-        dataset = img_meta['dataset']
-
         # 2. compute the weighted costs
         # classification cost
         cls_cost = self.cls_cost(cls_pred, gt_labels)  # [300, num_gts]
@@ -125,20 +124,20 @@ class PoseHungarianAssigner3D(BaseAssigner):
                                     valid_kpt_flag)  # [300, num_kpt]
         
         # keypoint OKS cost
+        # FIXME 这里的oks_cost和其余的cost完全不是一个数量级
         kpt_pred_tmp = kpt_pred.clone().detach().reshape(
             kpt_pred.shape[0], -1, 2)  # [300, 15, 2]
         kpt_pred_tmp = kpt_pred_tmp * factor[:, :2].unsqueeze(0)  # 归一化后的坐标 * 图像尺寸
         oks_cost = self.oks_cost(kpt_pred_tmp, gt_keypoints_reshape[..., :2],
                                     valid_kpt_flag, gt_areas)  # [300, num_kpt]
-        
         # keypoint Depth cost
         if dataset == "COCO":
             refer_depth_cost = 0 
             kpt_depth_cost = 0
         elif dataset == "MUCO":
             gt_keypoints_depth = gt_keypoints[..., -5:]  # [numt_gts, 15, 5] ,[Z, fx, fy, cx, cy]
-            depth_pred_tmp = kpt_depth.clone().detach() # [300, 1 + 15]
-            refer_point_depth = depth_pred_tmp[..., 0]  # [300, 1], reference point 绝对深度
+            depth_pred_tmp = depth_pred.clone().detach() # [300, 1 + 15], 网络预测的深度
+            refer_point_depth = depth_pred_tmp[..., 0][..., None]  # [300, 1], reference point 绝对深度
             kpt_real_depth = depth_pred_tmp[..., 1:]  # [300, 15], keypoints 相对深度
             kpt_abs_depth = kpt_real_depth + refer_point_depth  # [300, 15], keypoints 绝对深度
         
@@ -155,7 +154,11 @@ class PoseHungarianAssigner3D(BaseAssigner):
         if linear_sum_assignment is None:
             raise ImportError('Please run "pip install scipy" '
                                 'to install scipy first.')
-        matched_row_inds, matched_col_inds = linear_sum_assignment(cost)  # [num_gts, ]
+        try:
+            matched_row_inds, matched_col_inds = linear_sum_assignment(cost)  # [num_gts, ]
+        except:
+            print('Error in linear_sum_assignment')
+            import pdb;pdb.set_trace()
         matched_row_inds = torch.from_numpy(matched_row_inds).to(
             kpt_pred.device)
         matched_col_inds = torch.from_numpy(matched_col_inds).to(

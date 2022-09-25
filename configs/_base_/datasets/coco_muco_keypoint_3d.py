@@ -1,8 +1,8 @@
 # dataset settings, use 3d dataset
 dataset_type = 'opera.JointDataset'
 # data_root
-data_coco_root = '/data/coco/'
-data_muco_root = '/data/MuCo/'
+data_coco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/coco2017/'
+data_muco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/MuCo/'
 
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
@@ -101,10 +101,14 @@ train_pipeline = [
     # ),
     dict(type='mmdet.Normalize', **img_norm_cfg),
     dict(type='mmdet.Pad', size_divisor=1),  # 使用0填充图像边缘
+    dict(type='opera.AugConstraint', 
+        with_cons_coord=True,
+        with_cons_length=True,
+    ),
     dict(type='opera.FormatBundle',
-            extra_keys=['gt_keypoints', 'gt_bboxs', 'gt_areas']),
+            extra_keys=['gt_keypoints', 'gt_areas',]),
     dict(type='mmdet.Collect',
-            keys=['img', 'gt_bboxs', 'gt_keypoints', 'gt_areas', 'ann_info', 'dataset']),
+            keys=['img', 'gt_bboxes', 'gt_labels', 'gt_keypoints', 'gt_areas', 'dataset']),
 ]
 
 # 尚未修改
@@ -126,13 +130,33 @@ test_pipeline = [
 
 
 # 仅使用修改格式后的coco数据集进行调试
+# data = dict(
+#     samples_per_gpu=2,
+#     workers_per_gpu=1,
+#     train=dict(
+#         type=dataset_type,
+#         ann_file= '/home/notebook/code/personal/S9043252/wz/dataset_anno/coco_keypoints_train2017.json',
+#         img_prefix=data_coco_root,
+#         pipeline=train_pipeline
+#     ),
+#     val=dict(
+#         type=dataset_type,
+#         ann_file=[],
+#         pipeline=test_pipeline
+#     ),
+#     test=dict(
+#         ann_file=[],
+#         pipeline=test_pipeline,
+#     )
+# )
+
 data = dict(
-    samples_per_gpu=1,
+    samples_per_gpu=2,
     workers_per_gpu=1,
     train=dict(
         type=dataset_type,
-        ann_file=data_coco_root + 'annotations/coco_keypoints_train2017.json',
-        img_prefix=data_coco_root,
+        ann_file= '/home/notebook/code/personal/S9043252/wz/dataset_anno/MuCo.json',
+        img_prefix=data_muco_root,
         pipeline=train_pipeline
     ),
     val=dict(
@@ -146,14 +170,13 @@ data = dict(
     )
 )
 
-
 # data = dict(
 #     samples_per_gpu=1,
 #     workers_per_gpu=1,
 #     train=dict(
 #         type=dataset_type,
-#         ann_file=[data_coco_root + 'annotations/coco_keypoints_train2017.json',
-#                     data_muco_root + 'annotations/MuCo.json'],
+#         ann_file=['/home/notebook/code/personal/S9043252/wz/dataset_anno//coco_keypoints_train2017.json',
+#                     '/home/notebook/code/personal/S9043252/wz/dataset_anno//MuCo.json'],
 #         img_prefix=[data_coco_root, data_muco_root],
 #         pipeline=train_pipeline
 #     ),

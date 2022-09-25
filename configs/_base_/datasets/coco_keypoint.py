@@ -1,7 +1,8 @@
 # dataset settings
 dataset_type = 'opera.CocoPoseDataset'
 # data_root = '/data/jupyter/PETR/coco/'
-data_root = '/data/coco/'
+# data_root = '/data/coco/'
+data_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/coco2017/'
 
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
@@ -95,17 +96,17 @@ data = dict(
     train=dict(
         type=dataset_type,
         ann_file=data_root + 'annotations/person_keypoints_train2017.json',
-        img_prefix=data_root + 'images/train2017/',
+        img_prefix=data_root + '/train2017/',
         pipeline=train_pipeline),
     val=dict(
         type=dataset_type,
         ann_file=data_root + 'annotations/person_keypoints_val2017.json',
-        img_prefix=data_root + 'images/val2017/',
+        img_prefix=data_root + '/val2017/',
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
         ann_file=data_root + 'annotations/person_keypoints_val2017.json',
-        img_prefix=data_root + 'images/val2017/',
+        img_prefix=data_root + '/val2017/',
         pipeline=test_pipeline))
 
 evaluation = dict(interval=1, metric='keypoints')

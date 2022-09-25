@@ -29,7 +29,7 @@ class JointDataset(CustomDataset):
         13: "RKnee",
         14: "RAnkle "
     """
-    CLASSES = ('person')
+    CLASSES = ('person', )
     
     PALETTE = [[0, 1], 
                 [0, 2], 

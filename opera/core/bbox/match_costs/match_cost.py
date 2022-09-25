@@ -88,6 +88,16 @@ class OksCost(object):
                 .87, .87,
                 .89, .89,
                 .79, .79], dtype=np.float32) / 10.0
+        elif num_keypoints == 15:
+            self.sigmas = np.array([
+                .79,
+                .26, 1.07,
+                .79, .72,
+                .62, 1.07,
+                .87, .89,
+                .79, .72,
+                .62, 1.07,
+                .87, .89,], dtype=np.float32) / 10.0
         else:
             raise ValueError(f'Unsupported keypoints number {num_keypoints}')
 
@@ -101,13 +111,13 @@ class OksCost(object):
             valid_kpt_flag (Tensor): valid flag of ground truth keypoints.
                 Shape [num_gt, K].
             gt_areas (Tensor): Ground truth mask areas. Shape [num_gt,].
-
+            
         Returns:
             torch.Tensor: oks_cost value with weight.
         """
         sigmas = torch.from_numpy(self.sigmas).to(kpt_pred.device)
         variances = (sigmas * 2)**2
-
+            
         oks_cost = []
         assert len(gt_keypoints) == len(gt_areas)
         for i in range(len(gt_keypoints)):
@@ -117,7 +127,13 @@ class OksCost(object):
             vis_flag = (valid_kpt_flag[i] > 0).int()  # [17, ]
             vis_ind = vis_flag.nonzero(as_tuple=False)[:, 0]  # valid_kpt_index
             num_vis_kpt = vis_ind.shape[0]
-            assert num_vis_kpt > 0
+            # FIXME
+            # 数据集处理中，有的num_keypoints个数为零，没有删除
+            # assert num_vis_kpt > 0, f"num_vis_kpt is {num_vis_kpt}"
+            # if num_vis_kpt == 0:
+            #     print("Error.")
+            #     import pdb;pdb.set_trace()
+            num_vis_kpt = num_vis_kpt if num_vis_kpt > 0 else 1
             area = gt_areas[i]
 
             squared_distance0 = squared_distance / (area * variances * 2)  # [300, 17]
@@ -161,34 +177,46 @@ class DepthL1Cost(object):
             valid_kpt_flag (_type_): 有效的关键点标志位， vis, [N, 15, 1]
             img_shape: [h, w]
         """
+        _, w, _ = img_shape
         kpt_depth_cost = []
         refer_depth_cost= []
         for i in range(len(gt_keypoints_depth)):
-            refer_depth_tmp = refer_point_depth.clone()
-            kpt_depth_tmp = kpt_abs_depth.clone()
+            refer_depth_tmp = refer_point_depth.clone()  # [300, 1]
+            kpt_depth_tmp = kpt_abs_depth.clone()  # [300, 15]
             valid_flag = valid_kpt_flag[i] > 0  # [15]
-            
+            valid_flag_expand = valid_flag.unsqueeze(0).expand_as(kpt_depth_tmp)
+            kpt_depth_tmp[~valid_flag_expand] = 0
+
             # 计算参考点深度损失
-            gt_aver_depth = torch.sum(gt_keypoints_depth[i][valid_flag][0]) / len(gt_keypoints_depth[i][valid_flag][0])
-            refer_cost = torch.abs(refer_depth_tmp - gt_aver_depth)
-        
+            len_valid = len(gt_keypoints_depth[i][valid_flag])
+            len_valid = len_valid if len_valid > 0 else 1  # 防止关键点个数为0
+            gt_aver_depth = torch.sum(gt_keypoints_depth[i][valid_flag][..., 0]) / \
+                len_valid  # 有效的关键点深度 / 有效的关键点个数
+            gt_aver_f = torch.sum(gt_keypoints_depth[i][valid_flag][..., 1]) / \
+                len_valid  # 有效的fx / 有效的关键点个数
+            # assert gt_aver_f != 0, f"有效的关键点个数为零"
+            gt_aver_f = gt_aver_f if gt_aver_f > 0 else 1
+            gt_aver_real_depth = gt_aver_depth * w / gt_aver_f
+            refer_cost = torch.abs(refer_depth_tmp - gt_aver_real_depth)  # [300, 1]
             # 计算关键点深度损失
-            kpt_depth_tmp[~valid_flag] = 0  # 无效深度 
-            # FIXME 根据SMAP对深度进行处理
-            depth = gt_keypoints_depth[i][valid_flag][0] / gt_keypoints_depth[i][valid_flag][1]  # Z / fx, [15, ]
-            kpt_cost = torch.cidst(
+            # gt_depth = torch.zeros_like(gt_keypoints_depth[i][..., 0])
+            gt_depth = torch.zeros((15, )).cuda()
+            gt_depth[valid_flag] = gt_keypoints_depth[i][valid_flag][..., 0] * w / \
+                gt_keypoints_depth[i][valid_flag][..., 1]  # Z * w / fx, [15, ]
+            kpt_cost = torch.cdist(
                 kpt_depth_tmp,
-                depth.unsqueeze(0),  # [1, 15]
-                p=1,)
-            # 
+                gt_depth.unsqueeze(0),  # [1, 15]
+                p=1,)  # [300, 15]
             avg_factor = torch.clamp(valid_flag.float().sum(), 1.0)
             kpt_cost = kpt_cost / avg_factor
             
             refer_depth_cost.append(refer_cost)
             kpt_depth_cost.append(kpt_cost)
-            
         kpt_depth_cost = torch.cat(kpt_depth_cost, dim=1)
         refer_depth_cost = torch.cat(refer_depth_cost, dim=1)
-        
+        num_nan_1 = torch.isnan(kpt_depth_cost).int().sum()
+        num_nan_2 = torch.isnan(refer_depth_cost).int().sum()
+        if num_nan_1 > 0 or num_nan_2 > 0:
+            import pdb;pdb.set_trace()
         return refer_depth_cost * self.refer_depth_weight, \
                 kpt_depth_cost * self.kpt_depth_weight
