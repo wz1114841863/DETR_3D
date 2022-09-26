@@ -528,6 +528,7 @@ class PETRHead3D(AnchorFreeHead):
         # TODO 虽然传入了深度信息，但是未使用
         losses = self.forward_refine(memory, mlvl_masks, refine_targets,
                                         losses, img_metas)
+        print(losses)
         return losses
 
     @force_fp32(apply_to=('all_cls_scores', 'all_kpt_preds'))

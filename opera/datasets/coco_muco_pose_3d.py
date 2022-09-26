@@ -44,7 +44,7 @@ class JointDataset(CustomDataset):
                 [13, 14], 
                 [2, 6], 
                 [6, 7], 
-                [7, 8]]
+                [7, 8],]
     
     def __init__(self, 
                     *args,
@@ -152,6 +152,7 @@ class JointDataset(CustomDataset):
         result = (f'\n{self.__class__.__name__} {dataset_type} dataset '
                     f'with number of images {len(self)}, \n')
         return result
+
 if __name__ == '__main__':
     pass
 

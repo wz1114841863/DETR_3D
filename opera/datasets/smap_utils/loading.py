@@ -44,7 +44,7 @@ class LoadImgFromFile:
         else:
             raise ValueError("img_prefix 不能为空。")
         
-        img_bytes = self.file_client.get(filepath=filepath)
+        img_bytes = self.file_client.get(=fifilepathlepath)
         img = mmcv.imfrombytes(
             img_bytes, flag=self.color_type, channel_order=self.channel_order)
         
@@ -93,7 +93,7 @@ class LoadAnnosFromFile(MMDetLoadAnnotations):
         bboxs = results['ann_info']['bboxs'].copy()
         bboxs = np.asarray(bboxs)
         # 修改bboxs，coco中的格式为：[x1, y1, w, h]
-        # 注意这里仅修改了results['bboxs']
+        # 注意这里仅修改了results['bboxs'], [num_gts, 4]
         bboxs[:, 2] += bboxs[:, 0]
         bboxs[:, 3] += bboxs[:, 1]
         # 确保bbox中的坐标为[left_top_x, left_top_y, right_bottom_x, right_bottom_y]
