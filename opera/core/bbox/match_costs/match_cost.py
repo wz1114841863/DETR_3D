@@ -129,11 +129,11 @@ class OksCost(object):
             num_vis_kpt = vis_ind.shape[0]
             # FIXME
             # 数据集处理中，有的num_keypoints个数为零，没有删除
-            # assert num_vis_kpt > 0, f"num_vis_kpt is {num_vis_kpt}"
+            assert num_vis_kpt > 0, f"num_vis_kpt is {num_vis_kpt}"
             # if num_vis_kpt == 0:
             #     print("Error.")
             #     import pdb;pdb.set_trace()
-            num_vis_kpt = num_vis_kpt if num_vis_kpt > 0 else 1
+            # num_vis_kpt = num_vis_kpt if num_vis_kpt > 0 else 1
             area = gt_areas[i]
 
             squared_distance0 = squared_distance / (area * variances * 2)  # [300, 17]
@@ -189,13 +189,13 @@ class DepthL1Cost(object):
 
             # 计算参考点深度损失
             len_valid = len(gt_keypoints_depth[i][valid_flag])
-            len_valid = len_valid if len_valid > 0 else 1  # 防止关键点个数为0
+            # len_valid = len_valid if len_valid > 0 else 1  # 防止关键点个数为0
             gt_aver_depth = torch.sum(gt_keypoints_depth[i][valid_flag][..., 0]) / \
                 len_valid  # 有效的关键点深度 / 有效的关键点个数
             gt_aver_f = torch.sum(gt_keypoints_depth[i][valid_flag][..., 1]) / \
                 len_valid  # 有效的fx / 有效的关键点个数
-            # assert gt_aver_f != 0, f"有效的关键点个数为零"
-            gt_aver_f = gt_aver_f if gt_aver_f > 0 else 1
+            assert gt_aver_f != 0, f"有效的关键点个数为零"
+            # gt_aver_f = gt_aver_f if gt_aver_f > 0 else 1
             gt_aver_real_depth = gt_aver_depth * w / gt_aver_f
             refer_cost = torch.abs(refer_depth_tmp - gt_aver_real_depth)  # [300, 1]
             # 计算关键点深度损失

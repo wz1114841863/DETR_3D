@@ -731,7 +731,7 @@ class PETRTransformer3D(Transformer):
                 hm_proto, memory
 
         return inter_states, init_reference_out, \
-                inter_references_out, None, None, None, None, None, hm_proto
+                inter_references, None, None, None, None, None, hm_proto
 
     def forward_refine(self,
                         mlvl_masks,

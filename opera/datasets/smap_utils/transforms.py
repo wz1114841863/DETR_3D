@@ -39,26 +39,26 @@ class AugRandomFlip(MMDetRandomFlip):
     def keypoint_flip(self, results):
         """水平翻转关键点坐标。
 
-        注: 这里仅翻转了2d坐标中的x和交换了对应的关键点坐标, 但并未修改3d 坐标中的
-        X, Y 是否存在问题。
+        注: 这里仅翻转了2d坐标中的x和交换了对应的关键点坐标, 未针对vis=0, 1, 2做处理。
+        但并未修改3d 坐标中的X, Y等其他信息
         """
         # 翻转所有关键点
         keypoints = results['gt_keypoints'].copy()
-        gt_keypoints_flag = results['gt_keypoints_flag'].copy()
+        vis_flag = results['gt_vis_flag'].copy()
         for i in range(len(keypoints)):  # [person_num, 15, 11]
-            # change the coordinate
-            keypoints[i][:, 0] = results['img_shape'][1] - 1 - keypoints[i][:, 0]  # 根据图片中心翻转x
+            # change the coordinate， 也会翻转vis=0的标志位
+            keypoints[i][:, 0] = \
+                results['img_shape'][1] - 1 - keypoints[i][:, 0]  # 根据图片中心翻转x
             # change the left and the right
             keypoints[i][:, :] = keypoints[i][FLIP_ORDER, :]
-            gt_keypoints_flag[i][:, :] = gt_keypoints_flag[i][FLIP_ORDER, :]
-        
-        # 无效关键点重新置0
-        for n in range(len(keypoints)):
-            for j in range(15):
-                if gt_keypoints_flag[n][j][0] == 0:
-                    keypoints[n][j] = [0 for _ in range(11)]
-        
-        results['gt_keypoints_flag'] = gt_keypoints_flag
+            vis_flag[i][:] = vis_flag[i][FLIP_ORDER]
+            
+            # kpt_vis_flag = vis_flag[i] > 0
+            # for j in range(15):
+            #     if not kpt_vis_flag[i]:
+            #         keypoints[i][j] = np.asarray([0.0 for _ in range(11)])
+
+        results['gt_vis_flag'] = vis_flag
         results['gt_keypoints'] = keypoints
         return results  
     
@@ -70,7 +70,7 @@ class AugRandomFlip(MMDetRandomFlip):
         """
         for key in results.get('img_fields', ['img']):
             results[key] = mmcv.imflip(
-            results[key], direction=results['flip_direction'])
+                results[key], direction=results['flip_direction'])
 
         return results
         
@@ -85,8 +85,7 @@ class AugRandomFlip(MMDetRandomFlip):
             bboxs = results[key]  # [person_num, 4]")
             assert bboxs.shape[1] == 4, "the shape of bbox isn't 4."
             flip_bboxs = bboxs.copy()
-            flip_bboxs[:, 0] = img_shape[1] - 1 - bboxs[:, 0]
-            flip_bboxs[:, 2] = img_shape[1] - 1 - bboxs[:, 2]
+            flip_bboxs[:, [0, 2]] = img_shape[1] - 1 - bboxs[:, [0, 2]]
             flip_bboxs[:,[0, 2]] = flip_bboxs[:,[2, 0]]
             results[key] = flip_bboxs
             
@@ -132,7 +131,7 @@ class AugRandomFlip(MMDetRandomFlip):
 @PIPELINES.register_module()
 class AugRandomRotate():
     """旋转图片,获取旋转矩阵
-    MuCo的area是由bbox乘积而来，旋转之后，bbox重新计算，area重新计算
+    MuCo的area是由bbox乘积而来，旋转之后，bbox重新计算，area也需重新计算
     Return:
         add new keys:
 
@@ -196,15 +195,15 @@ class AugRandomRotate():
         # 旋转所有2d坐标
         for key in results.get('keypoint_fields', ['gt_keypoints']):
             keypoints = results[key].copy()
+            # vis_flag = results['gt_vis_flag'].copy()
             for i in range(len(keypoints)):  # [person_num, 15, 11]
-                keypoints[i][:, :2] = self._rotate_coordinate(keypoints[i][:, :2], self.M)
-            
-            # 无效关键点重新置0
-            for n in range(len(keypoints)):
-                for j in range(15):
-                    if results['gt_keypoints_flag'][n][j] == 0:
-                        keypoints[n][j] = [0 for _ in range(11)]
-                        
+                keypoints[i][:, :2] = \
+                    self._rotate_coordinate(keypoints[i][:, :2], self.M)
+                
+                # kpt_vis_flag = vis_flag[i] > 0
+                # for j in range(15):
+                #     if not kpt_vis_flag[i]:
+                #         keypoints[i][j] = np.asarray([0.0 for _ in range(11)])
             results[key] = keypoints
 
         return results
@@ -217,39 +216,28 @@ class AugRandomRotate():
         """
         for key in results.get('bbox_fields', ['gt_bboxes']):
             bboxs = results[key].copy()
-            # 处理MuCo的areas
-            areas = results['gt_areas'].copy()
             for i in range(len(bboxs)):  # [person_num, 4]
                 bbox = bboxs[i]
-                top_left = np.asarray((min(bbox[0], bbox[2]), min(bbox[1], bbox[3])))
-                top_right = np.asarray((max(bbox[0], bbox[2]), min(bbox[1], bbox[3])))
-                bottom_left = np.asarray((min(bbox[0], bbox[2]), max(bbox[1], bbox[3])))
-                bottom_right = np.asarray((max(bbox[0], bbox[2]), max(bbox[1], bbox[3])))
-                
-                assert len(top_left) == 2 and len(top_right) == 2 and \
-                    len(bottom_left) == 2 and len(bottom_right) == 2
-                    
+                top_left = np.asarray((min(bbox[0], bbox[2]), min(bbox[1], bbox[3])), dtype=np.float32)
+                top_right = np.asarray((max(bbox[0], bbox[2]), min(bbox[1], bbox[3])), dtype=np.float32)
+                bottom_left = np.asarray((min(bbox[0], bbox[2]), max(bbox[1], bbox[3])), dtype=np.float32)
+                bottom_right = np.asarray((max(bbox[0], bbox[2]), max(bbox[1], bbox[3])), dtype=np.float32)
                 coords = np.stack([top_left, top_right, bottom_left, 
                                     bottom_right], axis=0)
+                coords = self._rotate_coordinate(coords, self.M)
                 assert coords.shape == (4, 2), \
                     f"error. the shape of coords is: {coords.shape}"
-                coords = self._rotate_coordinate(coords, self.M)
                 
                 # 重新框定bbox: x1, y1, x2, y2
                 [min_x, min_y] = np.min(coords, axis=0)
                 [max_x, max_y] = np.max(coords, axis=0)
                 # 注: 如果图片进行填充，这里的bbox就不会越出边界。
                 bboxs[i] = [min_x, min_y, max_x, max_y]
-                
-                if results['dataset'] == "MUCO":
-                    areas[i] = (max_x - min_x) * (max_y - min_y)
             # 越界处理
             img_shape = results['img_shape']
             bboxs[:, 0::2] = np.clip(bboxs[:, 0::2], 0, img_shape[1])
             bboxs[:, 1::2] = np.clip(bboxs[:, 1::2], 0, img_shape[0])  
             results[key] = bboxs
-            results['gt_areas'] = areas
-
         return results
     
     def __call__(self, results):
@@ -319,31 +307,27 @@ class AugResize(MMDetResize):
             results['keep_ratio'] = self.keep_ratio
             
     def _resize_bboxes(self, results):
-        super()._resize_bboxes(results)
-        if results['dataset'] == "MUCO":
-            bboxs = results['gt_bboxes'].copy()
-            areas = results['gt_areas'].copy()
-        return
+        return super()._resize_bboxes(results)
     
     def _resize_keypoints(self, results):
         # Resize 所有关键点
         for key in results.get('keypoint_fields', ['gt_keypoints']):
             keypoints = results[key].copy()
-            keypoints[..., 0] = keypoints[..., 0] * results['scale_factor'][0]
-            keypoints[..., 1] = keypoints[..., 1] * results['scale_factor'][1]
-            
-            # 关键点越界处理
+            vis_flag = results['gt_vis_flag'].copy()
+            for i in range(len(keypoints)):
+                keypoints[i][:, :2] = \
+                    keypoints[i][:, :2] * results['scale_factor'][:2]
+                
+                # kpt_vis_flag = vis_flag[i] > 0
+                # for j in range(15):
+                #     if not kpt_vis_flag[i]:
+                #         keypoints[i][j] = np.asarray([0.0 for _ in range(11)])
+            # 关键点越界处理，其实这里关键点并不会越界
             if self.keypoint_clip_border:
                 img_shape = results['img_shape']
-                keypoints[:, 0] = np.clip(keypoints[:, 0], 0, img_shape[1])
-                keypoints[:, 1] = np.clip(keypoints[:, 1], 0, img_shape[0])
+                keypoints[..., 0] = np.clip(keypoints[..., 0], 0, img_shape[1])
+                keypoints[..., 1] = np.clip(keypoints[..., 1], 0, img_shape[0])
         
-        # 无效关键点重新置0
-        for n in range(len(keypoints)):
-            for j in range(15):
-                if results['gt_keypoints_flag'][n][j][0] == 0:
-                    keypoints[n][j] = [0 for _ in range(11)]
-                    
         results[key] = keypoints            
 
     def __call__(self, results):
@@ -412,14 +396,14 @@ class AugCrop(MMDetRandomCrop):
             img = img[crop_y1:crop_y2, crop_x1:crop_x2, ...]
             img_shape = img.shape
             results[key] = img
-            
         results['img_shape'] = img_shape        
 
         # crop bboxes accordingly and clip to the image boundary
         for key in results.get('bbox_fields', ['gt_bboxes']):
+            bboxes = results[key].copy()  # [num_persons, 4]
             bbox_offset = np.array([offset_w, offset_h, offset_w, offset_h],
                                     dtype=np.float32)
-            bboxes = results[key] - bbox_offset  # 注意这里是减去偏移。
+            bboxes = bboxes - bbox_offset  # 注意这里是减去偏移。
             # 判断是否超出范围, 这里要确保bbox中的数据满足[x1, y1, x2, y2]
             if self.bbox_clip_border:
                 bboxes[:, 0::2] = np.clip(bboxes[:, 0::2], 0, img_shape[1])
@@ -432,37 +416,45 @@ class AugCrop(MMDetRandomCrop):
             
             # 留取有效的bbox[N, 4] 和 keypoints[N, J, 11]
             results[key] = bboxes[valid_inds, :]
-            results["gt_keypoints"] = results["gt_keypoints"][valid_inds]
+            keypoints = results["gt_keypoints"].copy()
+            results["gt_keypoints"] = keypoints[valid_inds]
+            vis_flag = results["gt_vis_flag"].copy()
+            results["gt_vis_flag"] = vis_flag[valid_inds]
+            labels = results['gt_labels'].copy()
+            results['gt_labels'] = labels[valid_inds]
+            areas = results['gt_areas'].copy()
+            results['gt_areas'] = areas[valid_inds]
             assert len(results[key]) == len(results["gt_keypoints"]), \
                 "bbox长度与keypoints长度不一致"
-            
+            assert len(results[key]) == len(results["gt_vis_flag"]), \
+                "bbox长度与vis flag长度不一致"
+                
             for key in results.get('keypoint_fields', ['gt_keypoints']):
                 kpt_offset = np.array([offset_w, offset_h], dtype=np.float32)
                 keypoints = results[key].copy()
-                for single_person_keypoints in keypoints:
-                    single_person_keypoints[:, :2] = \
-                        single_person_keypoints[:, :2] - kpt_offset  # x, y - oofset_x, offset_y
-                    invalid_idx = \
-                        (single_person_keypoints[..., 0] < 0).astype(np.int8) | \
-                        (single_person_keypoints[..., 1] < 0).astype(np.int8) | \
-                        (single_person_keypoints[..., 0] > img_shape[1]).astype(np.int8) | \
-                        (single_person_keypoints[..., 1] > img_shape[0]).astype(np.int8)
-                    single_person_keypoints[invalid_idx > 0, :] = [0 for _ in range(11)]
-                    
-                    if self.kpt_clip_border:  # 可能并没有作用
-                        single_person_keypoints[:, 0] = np.clip(
-                            single_person_keypoints[..., 0], 0, img_shape[1])
-                        single_person_keypoints[:, 1] = np.clip(
-                            single_person_keypoints[..., 1], 0, img_shape[0])
-                    
-                # 无效关键点重新置0
-                for n in range(len(keypoints)):
+                vis_flag = results["gt_vis_flag"].copy()
+                for i in range(len(keypoints)):
+                    keypoints[i][:, :2] = \
+                        keypoints[i][:, :2] - kpt_offset  # x, y - oofset_x, offset_y
+                        
+                    kpt_vis_flag = vis_flag[i] > 0
                     for j in range(15):
-                        if results['gt_keypoints_flag'][n][j][0] == 0:
-                            keypoints[n][j] = [0 for _ in range(11)]
-                            
+                        if not kpt_vis_flag[i]:
+                            keypoints[i][j] = np.asarray([0.0 for _ in range(11)])
+                    # 越界处理
+                    valid_inds = (keypoints[i][:, 0] >= 0.0) & \
+                        (keypoints[i][:, 1] >= 0.0)
+                    assert valid_inds.shape == kpt_vis_flag.shape, \
+                        f"valid_ids.shape:{valid_inds.shape}, kpt_vis_flag.shape:{kpt_vis_flag.shape}"
+                    keypoints[i][~ valid_inds] = np.asarray([0.0 for _ in range(11)], dtype=np.float32)
+                    # TODO 这里没有进一步处理 gt_vis_flag，最后重新生成
+                assert keypoints.shape[-1] == 11 and keypoints.shape[-2] == 15, \
+                    f"error in process keypoints, keypoints.shape: {keypoints.shape}"
                 results[key] = keypoints
-            
+                # 重新生成['gt_vis_flag']
+                new_vis_flag = keypoints[..., 3]  # [N, J]
+                results['gt_vis_flag'] = new_vis_flag
+        
         return results
                 
     def __repr__(self):
@@ -472,43 +464,42 @@ class AugCrop(MMDetRandomCrop):
 
 
 @PIPELINES.register_module()
-class AugConstraint():
+class AugPostProcess():
     """
-    对关键点的坐标，bbox的坐标做限制。
-    判断各个gt的长度。
+    作用如下：
+        处理areas: 
+        判断gt的长度是否相同, bboxes, keypoints, areas, labels,
+        判断某个人的十五个关键点是否可见，vis.sum > 0
     """
     def __init__(self, 
-                    with_cons_coord=True,
-                    with_cons_length=True,
-                    with_cons_areas=True):
-        self.with_cons_coord = with_cons_coord
-        self.with_cons_length = with_cons_length
-        self.with_cons_areas = with_cons_areas
+                    with_proc_areas=True,
+                    with_proc_length=True,
+                    with_proc_kpts=True,
+                    with_proc_coord=True,):
+        self.with_proc_areas = with_proc_areas
+        self.with_judge_length = with_proc_length
+        self.with_proc_kpts = with_proc_kpts
+        self.with_proc_coord = with_proc_coord
 
     @staticmethod
-    def _cons_coord(results):
+    def _proc_coord(results):
         img_shape = results['img'].shape
         results['img_shape']= img_shape
 
         keypoints = results['gt_keypoints'].copy()
-        keypoints[:, 0] = np.clip(keypoints[:, 0], 0, img_shape[1] - 1)
-        keypoints[:, 1] = np.clip(keypoints[:, 1], 0, img_shape[0] - 1)
-        # 无效关键点重新置0
-        for n in range(len(keypoints)):
-            for j in range(15):
-                if results['gt_keypoints_flag'][n][j][0] == 0:
-                    keypoints[n][j] = [0 for _ in range(11)]
+        keypoints[..., 0] = np.clip(keypoints[..., 0], 0, img_shape[1] - 1)
+        keypoints[..., 1] = np.clip(keypoints[..., 1], 0, img_shape[0] - 1)
         results['gt_keypoints'] = keypoints
 
         bboxes = results['gt_bboxes']
-        bboxes[:, 0::2] = np.clip(bboxes[:, 0::2], 0, img_shape[1] - 1)
-        bboxes[:, 1::2] = np.clip(bboxes[:, 1::2], 0, img_shape[0] - 1)  
+        bboxes[..., 0::2] = np.clip(bboxes[..., 0::2], 0, img_shape[1] - 1)
+        bboxes[..., 1::2] = np.clip(bboxes[..., 1::2], 0, img_shape[0] - 1)  
         results['gt_bboxes'] = bboxes
 
         return results
 
     @staticmethod
-    def _cons_length(results):
+    def _proc_length(results):
         # 验证：
         assert len(results['gt_bboxes']) == len(results['gt_areas']), \
             f"len_bboxes: {len(results['gt_bboxes'])}, len_areas: {len(results['gt_areas'])}"
@@ -522,25 +513,30 @@ class AugConstraint():
         return results
 
     @staticmethod
-    def _cons_areas(results):
-        if results['dataset'] == "MUCO":
+    def _proc_areas(results):
+        dataset = results['dataset']
+        if dataset == "MUCO":
             bboxs = results['gt_bboxes'].copy()
             areas = []
-            bboxs = results['gt_bboxes']
             for i in range(len(bboxs)):
                 [left_top_x, left_top_y, right_bottom_x, right_bottom_y] = bboxs[i]
                 area = (right_bottom_x - left_top_x) * (right_bottom_y - left_top_y)
                 areas.append(area)
-                
-            results['gt_areas'] = np.asarray(areas)
+            results['gt_areas'] = np.asarray(areas, dtype=np.float32)
+        elif dataset == "COCO":
+            """关键点和bbox可能有裁剪，但对areas没有做对应处理，仅保证长度相同"""
+            pass
+        else:
+            raise NotImplemented(f"未知的dataset{dataset}")
         return results
 
     @staticmethod
-    def _cons_kpts(results):
+    def _proc_kpts(results):
         """
-            对 keypoints 的 num_vis_kpt 做判断
+            根据vis标志位，判断是否十五个关键点vis全为零，如果是，删除该目标
         """
-        kpts = results['gt_keypoints'].copy()
+        keypoints = results['gt_keypoints'].copy()
+        valid_flag = keypoints[..., 3]
         bboxes = results['gt_bboxes'].copy()
         areas = results['gt_areas'].copy()
         labels = results['gt_labels'].copy()
@@ -549,32 +545,28 @@ class AugConstraint():
         new_bboxes = []
         new_areas = []
         new_labels = []
-        for i in range(len(kpts)):  # num_gts
-            vis = kpts[i][:, 2] > 0
-            assert vis.shape[0] == 15
-            if vis.sum() != 0:
-                new_kpts.append(kpts[i])
+        for i in range(len(keypoints)):  # num_gts
+            kpt_valid_flag = valid_flag[i] > 0
+            assert kpt_valid_flag.shape[0] == 15
+            if kpt_valid_flag.sum() != 0:
+                new_kpts.append(keypoints[i])
                 new_bboxes.append(bboxes[i])
                 new_areas.append(areas[i])
                 new_labels.append(labels[i])
 
-        results['gt_keypoints'] = np.asarray(new_kpts)
-        results['gt_bboxes'] = np.asarray(new_bboxes)
-        results['gt_areas'] = np.asarray(new_areas)
+        results['gt_keypoints'] = np.asarray(new_kpts, dtype=np.float32)
+        results['gt_bboxes'] = np.asarray(new_bboxes, dtype=np.float32)
+        results['gt_areas'] = np.asarray(new_areas, dtype=np.float32)
         results['gt_labels'] = np.asarray(new_labels)
-
         return results
 
     def __call__(self, results):
-
-        if self.with_cons_coord:
-            results = self._cons_coord(results)
-
-        if self.with_cons_length:
-            results = self._cons_length(results)
-
-        if self.with_cons_areas:
-            results = self._cons_areas(results)
-
-        results = self._cons_kpts(results)
+        if self.with_proc_coord:
+            results = self._proc_coord(results)
+        if self.with_proc_areas:
+            results = self._proc_areas(results)
+        if self.with_proc_kpts:
+            results = self._proc_kpts(results)
+        if self.with_judge_length:
+            results = self._proc_length(results)
         return results 

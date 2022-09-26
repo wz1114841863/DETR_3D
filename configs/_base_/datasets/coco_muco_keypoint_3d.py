@@ -1,8 +1,11 @@
 # dataset settings, use 3d dataset
 dataset_type = 'opera.JointDataset'
 # data_root
-data_coco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/coco2017/'
-data_muco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/MuCo/'
+# data_coco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/coco2017/'
+# data_muco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/MuCo/'
+
+data_coco_root = "/data/coco/"
+data_muco_root = "/data/MuCo/"
 
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
@@ -17,7 +20,7 @@ train_pipeline = [
         with_bbox=True,
         with_label=True,
         with_keypoints=True,
-        with_areas=True,
+        with_area=True,
     ),
     dict(
         type='mmdet.PhotoMetricDistortion',
@@ -26,36 +29,36 @@ train_pipeline = [
         saturation_range=(0.5, 1.5),
         hue_delta=18,
     ),
-    # dict(
-    #     type='opera.VisImg',
-    #     draw_bbox=True,
-    #     draw_keypoints=True,
-    #     img_prefix='before_filp_00',
-    #     img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
-    # ),
+    dict(
+        type='opera.VisImg',
+        draw_bbox=True,
+        draw_keypoints=True,
+        img_prefix='before_filp_00',
+        img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
+    ),
     dict(
         type='opera.AugRandomFlip',
         flip_ratio=1.0,  # 测试Flip
     ),
-    # dict(
-    #     type='opera.VisImg',
-    #     draw_bbox=True,
-    #     draw_keypoints=True,
-    #     img_prefix='before_Random_00',
-    #     img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
-    # ),
+    dict(
+        type='opera.VisImg',
+        draw_bbox=True,
+        draw_keypoints=True,
+        img_prefix='before_Random_00',
+        img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
+    ),
     dict(
         type='opera.AugRandomRotate',
         max_rotate_degree=30,
         rotate_prob=1.0,  # 测试Rotate
     ),
-    # dict(
-    #     type='opera.VisImg',
-    #     draw_bbox=True,
-    #     draw_keypoints=True,
-    #     img_prefix='before_AugMent_00',
-    #     img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
-    # ),
+    dict(
+        type='opera.VisImg',
+        draw_bbox=True,
+        draw_keypoints=True,
+        img_prefix='before_AugMent_00',
+        img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
+    ),
     dict(
         type='mmdet.AutoAugment',
         policies=[
@@ -92,19 +95,16 @@ train_pipeline = [
             ]
         ]
     ),
-    # dict(
-    #     type='opera.VisImg',
-    #     draw_bbox=True,
-    #     draw_keypoints=True,
-    #     img_prefix='before_Normalize_00',
-    #     img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
-    # ),
+    dict(type='opera.AugPostProcess'),
+    dict(
+        type='opera.VisImg',
+        draw_bbox=True,
+        draw_keypoints=True,
+        img_prefix='before_Normalize_00',
+        img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
+    ),
     dict(type='mmdet.Normalize', **img_norm_cfg),
     dict(type='mmdet.Pad', size_divisor=1),  # 使用0填充图像边缘
-    dict(type='opera.AugConstraint', 
-        with_cons_coord=True,
-        with_cons_length=True,
-    ),
     dict(type='opera.FormatBundle',
             extra_keys=['gt_keypoints', 'gt_areas',]),
     dict(type='mmdet.Collect',
@@ -155,7 +155,7 @@ data = dict(
     workers_per_gpu=1,
     train=dict(
         type=dataset_type,
-        ann_file= '/home/notebook/code/personal/S9043252/wz/dataset_anno/MuCo.json',
+        ann_file= '/data/MuCo/annotations/MuCo.json',
         img_prefix=data_muco_root,
         pipeline=train_pipeline
     ),

@@ -31,7 +31,7 @@ class VisImg:
     
     @staticmethod
     def _draw_bbox(img, results):
-        bboxs = results['gt_bboxs']
+        bboxs = results['gt_bboxes']
         for bbox in bboxs:
             ptLeftTop = (int(bbox[0]), int(bbox[1]))
             ptRightBottom = (int(bbox[2]), int(bbox[3]))
@@ -47,7 +47,7 @@ class VisImg:
         for single_kps in persons_kps:
             for keypoint in single_kps:
                 keypoint = keypoint.astype(int)
-                if keypoint[0] == 0 and keypoint[1] == 0:
+                if keypoint[3] == 0:
                     continue
                 img = cv.circle(img, keypoint[:2], point_size, point_color, thickness)
         return img

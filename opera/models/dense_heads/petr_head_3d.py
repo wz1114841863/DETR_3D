@@ -659,19 +659,19 @@ class PETRHead3D(AnchorFreeHead):
         num_img, _, h, w = hm_pred.size()
         # placeholder of heatmap target (Gaussian distribution)
         hm_target = hm_pred.new_zeros(hm_pred.shape)
-        for i, (gt_label, gt_bbox, gt_keypoint) in enumerate(
+        for i, (gt_label, gt_bbox, gt_keypoint_drepth) in enumerate(
                 zip(gt_labels, gt_bboxes, gt_keypoints)):
             if gt_label.size(0) == 0:
                 continue
-            gt_keypoint = gt_keypoint[..., :3]
+            gt_keypoint = torch.cat((gt_keypoint_drepth[..., :2], gt_keypoint_drepth[..., 3].unsqueeze(-1)), -1)  # [x, y, vis]
             gt_keypoint = gt_keypoint.reshape(gt_keypoint.shape[0], -1,
                                                 3).clone()
             gt_keypoint[..., :2] /= 8
-            # if gt_keypoint[..., 0].max() > w or gt_keypoint[..., 1].max() > h:
-            #     import pdb;pdb.set_trace() 
+            if gt_keypoint[..., 0].max() > w or gt_keypoint[..., 1].max() > h:
+                import pdb;pdb.set_trace() 
             # FIXME 为什么会有 keypoint 越界
-            gt_keypoint[..., 0] = torch.clip(gt_keypoint[..., 0], 0, w - 1)
-            gt_keypoint[..., 1] = torch.clip(gt_keypoint[..., 1], 0, h - 1)
+            # gt_keypoint[..., 0] = torch.clip(gt_keypoint[..., 0], 0, w - 1)
+            # gt_keypoint[..., 1] = torch.clip(gt_keypoint[..., 1], 0, h - 1)
             # assert gt_keypoint[..., 0].max() <= w  # new coordinate system
             # assert gt_keypoint[..., 1].max() <= h  # new coordinate system
             gt_bbox /= 8
@@ -923,9 +923,9 @@ class PETRHead3D(AnchorFreeHead):
                 - neg_inds (Tensor): Sampled negative indices for each image.
         """
         num_querys = kpt_pred.size(0)
-        # 将ground truth 转为 float32
-        gt_keypoints = gt_keypoints.to(torch.float32)
-        gt_areas = gt_areas.to(torch.float32)
+        # # 将ground truth 转为 float32
+        # gt_keypoints = gt_keypoints.to(torch.float32)
+        # gt_areas = gt_areas.to(torch.float32)
         # assigner and sampler
         assign_result = self.assigner.assign(cls_score, kpt_pred, depth_pred, 
                             gt_labels, gt_keypoints, gt_areas, dataset, img_meta)
@@ -1071,6 +1071,8 @@ class PETRHead3D(AnchorFreeHead):
 
         # keypoint Depth L1 loss
         depth_preds = depth_preds.reshape(-1, depth_preds.shape[-1])
+        assert depth_preds.shape[-1] == 16, f"形状和设想不一样。"
+        depth_preds[..., 1:] = depth_preds[..., 1:] + depth_preds[..., 0].unsqueeze(-1)
         num_valid_depth = torch.clamp(
             reduce_mean(depth_weights.sum()), min=1).item()
         loss_depth = self.loss_depth_rpn(

@@ -44,7 +44,7 @@ class LoadImgFromFile:
         else:
             raise ValueError("img_prefix 不能为空。")
         
-        img_bytes = self.file_client.get(=fifilepathlepath)
+        img_bytes = self.file_client.get(filepath)
         img = mmcv.imfrombytes(
             img_bytes, flag=self.color_type, channel_order=self.channel_order)
         
@@ -76,22 +76,24 @@ class LoadAnnosFromFile(MMDetLoadAnnotations):
         with_bbox:(bool):
     Return:
         add new keys:
-            ['gt_bboxes', 'dataset', 'gt_keypoints', 'keypoints_fields', ['gt_keypoints_flag']]
+            ['gt_bboxes', 'bbox_fields', 'dataset', 'gt_labels',
+                'gt_keypoints', 'keypoints_fields', ['gt_vis_flag'], 'gt_areas']
     """
     def __init__(self, 
                 *args,
                 with_dataset=True, 
                 with_keypoints=True,
-                with_areas=True,
+                with_area=True,
                 **kwargs):
         super(LoadAnnosFromFile, self).__init__(*args, **kwargs)
         self.with_dataset = with_dataset
         self.with_keypoints = with_keypoints
-        self.with_areas = with_areas
+        self.with_area = with_area
     
     def _load_bboxes(self, results):
         bboxs = results['ann_info']['bboxs'].copy()
-        bboxs = np.asarray(bboxs)
+        bboxs = np.asarray(bboxs, dtype=np.float32)
+        assert bboxs.shape[-1] == 4, f"the shape of bboxs is {bboxs.shape}"
         # 修改bboxs，coco中的格式为：[x1, y1, w, h]
         # 注意这里仅修改了results['bboxs'], [num_gts, 4]
         bboxs[:, 2] += bboxs[:, 0]
@@ -109,7 +111,9 @@ class LoadAnnosFromFile(MMDetLoadAnnotations):
         return results
     
     def _load_dataset(self, results):
-        results['dataset'] = results['ann_info']['dataset'].upper()
+        dataset = results['ann_info']['dataset'].upper()
+        assert dataset in ['COCO', 'MUCO'], f"the dataset is {dataset}"
+        results['dataset'] = dataset
         return results
     
     def _load_keypoints(self, results):
@@ -118,16 +122,16 @@ class LoadAnnosFromFile(MMDetLoadAnnotations):
         """
         # 加载关键点数据
         keypoints = results['ann_info']['bodys'].copy()  # [N, J, 11]
-        results['gt_keypoints'] = np.asarray(keypoints)
+        keypoints = np.asarray(keypoints, dtype=np.float32)
+        results['gt_keypoints'] = keypoints
         results['keypoint_fields'] = ['gt_keypoints']
-        # 添加keyPoints标志位
-        keypoints_flag = np.ones((len(keypoints), 15, 1), dtype=int)
-        for n in range(len(keypoints)):
-            for j in range(15):
-                if keypoints[n][j][0] == 0.0 or keypoints[n][j][1] == 0.0:
-                    keypoints_flag[n][j][0] = 0
-                    
-        results['gt_keypoints_flag'] = keypoints_flag
+        # vis标志位
+        vis_flag = keypoints[..., 3]  # [N, J]
+        assert keypoints.shape[-1] == 11 and keypoints.shape[-2] == 15, \
+            f"the shape of keypoints is {keypoints.shape}"
+        assert vis_flag.shape[-1] == 15, \
+            f"the shape of vis_flag is {vis_flag.shape}"
+        results['gt_vis_flag'] = vis_flag
         return results
     
     def _load_areas(self, results):
@@ -143,8 +147,7 @@ class LoadAnnosFromFile(MMDetLoadAnnotations):
                 [left_top_x, left_top_y, right_bottom_x, right_bottom_y] = bboxs[i]
                 area = (right_bottom_x - left_top_x) * (right_bottom_y - left_top_y)
                 areas.append(area)
-        # areas = results['ann_info']['areas'].copy()
-        results['gt_areas'] = np.asarray(areas)
+        results['gt_areas'] = np.asarray(areas, dtype=np.float32)
         results['areas_fields'] = ['gt_areas']
         return results
     
@@ -173,7 +176,7 @@ class LoadAnnosFromFile(MMDetLoadAnnotations):
         if self.with_bbox:
             results = self._load_bboxes(results)
 
-        if self.with_areas:
+        if self.with_area:
             results = self._load_areas(results)
 
         if self.with_label:
