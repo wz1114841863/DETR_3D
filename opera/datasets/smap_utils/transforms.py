@@ -405,9 +405,8 @@ class AugCrop(MMDetRandomCrop):
                                     dtype=np.float32)
             bboxes = bboxes - bbox_offset  # 注意这里是减去偏移。
             # 判断是否超出范围, 这里要确保bbox中的数据满足[x1, y1, x2, y2]
-            if self.bbox_clip_border:
-                bboxes[:, 0::2] = np.clip(bboxes[:, 0::2], 0, img_shape[1])
-                bboxes[:, 1::2] = np.clip(bboxes[:, 1::2], 0, img_shape[0])
+            bboxes[:, 0::2] = np.clip(bboxes[:, 0::2], 0, img_shape[1])
+            bboxes[:, 1::2] = np.clip(bboxes[:, 1::2], 0, img_shape[0])
 
             valid_inds = (bboxes[:, 2] > bboxes[:, 0]) & (bboxes[:, 3] > bboxes[:, 1])
             if (not valid_inds.any() and not allow_negative_crop):
@@ -415,7 +414,7 @@ class AugCrop(MMDetRandomCrop):
                 return None
             
             # 留取有效的bbox[N, 4] 和 keypoints[N, J, 11]
-            results[key] = bboxes[valid_inds, :]
+            results[key] = bboxes[valid_inds]
             keypoints = results["gt_keypoints"].copy()
             results["gt_keypoints"] = keypoints[valid_inds]
             vis_flag = results["gt_vis_flag"].copy()
@@ -500,16 +499,18 @@ class AugPostProcess():
 
     @staticmethod
     def _proc_length(results):
+        len_bboxes = len(results['gt_bboxes'])
+        if len_bboxes == 0:
+            return None
         # 验证：
-        assert len(results['gt_bboxes']) == len(results['gt_areas']), \
-            f"len_bboxes: {len(results['gt_bboxes'])}, len_areas: {len(results['gt_areas'])}"
+        assert len_bboxes == len(results['gt_areas']), \
+            f"len_bboxes: {len_bboxes}, len_areas: {len(results['gt_areas'])}"
 
-        assert len(results['gt_bboxes']) == len(results['gt_keypoints']), \
-            f"len_bboxes: {len(results['gt_bboxes'])}, len_areas: {len(results['gt_keypoints'])}"
+        assert len_bboxes == len(results['gt_keypoints']), \
+            f"len_bboxes: {len_bboxes}, len_areas: {len(results['gt_keypoints'])}"
 
-        assert len(results['gt_bboxes']) == len(results['gt_labels']), \
-            f"len_bboxes: {len(results['gt_bboxes'])}, len_areas: {len(results['gt_labels'])}"
-
+        assert len_bboxes == len(results['gt_labels']), \
+            f"len_bboxes: {len_bboxes}, len_areas: {len(results['gt_labels'])}"
         return results
 
     @staticmethod
@@ -522,7 +523,8 @@ class AugPostProcess():
                 [left_top_x, left_top_y, right_bottom_x, right_bottom_y] = bboxs[i]
                 area = np.abs((right_bottom_x - left_top_x) * (right_bottom_y - left_top_y))
                 areas.append(area)
-            results['gt_areas'] = np.asarray(areas, dtype=np.float32)
+            areas = np.asarray(areas, dtype=np.float32)
+            results['gt_areas'] = areas
         elif dataset == "COCO":
             """关键点和bbox可能有裁剪，但对areas没有做对应处理，仅保证长度相同"""
             pass
@@ -545,15 +547,37 @@ class AugPostProcess():
         new_bboxes = []
         new_areas = []
         new_labels = []
+        
+        # 仅用于测试代码
+        # valid_index = areas > 0
+        # if not valid_index.all():
+        #     print("error!")
+        #     print(f"areas:{areas}")
+        #     print(f"bboxs:{bboxes}")
+        #     print(f"bboxs:{bboxes.shape}")
+            
         for i in range(len(keypoints)):  # num_gts
+
+                
             kpt_valid_flag = valid_flag[i] > 0
             assert kpt_valid_flag.shape[0] == 15
-            if kpt_valid_flag.sum() != 0:
+            if kpt_valid_flag.sum() == 0:
+                continue
+            elif not (areas[i] > 0).all():
+                continue
+            elif not ((bboxes[i][2] > bboxes[i][0]) & (bboxes[i][3] > bboxes[i][1])):
+                continue
+            else:
                 new_kpts.append(keypoints[i])
                 new_bboxes.append(bboxes[i])
                 new_areas.append(areas[i])
                 new_labels.append(labels[i])
-
+                
+        # if not valid_index.all():
+        #     print("修改之后：")
+        #     print(f"areas:{new_areas}")
+        #     print(f"bboxs:{new_bboxes}")
+        
         results['gt_keypoints'] = np.asarray(new_kpts, dtype=np.float32)
         results['gt_bboxes'] = np.asarray(new_bboxes, dtype=np.float32)
         results['gt_areas'] = np.asarray(new_areas, dtype=np.float32)
@@ -567,6 +591,7 @@ class AugPostProcess():
             results = self._proc_areas(results)
         if self.with_proc_kpts:
             results = self._proc_kpts(results)
-        if self.with_judge_length:
+        # 会返回None
+        if self.with_judge_length:  
             results = self._proc_length(results)
         return results 

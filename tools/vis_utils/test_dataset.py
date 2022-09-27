@@ -14,9 +14,15 @@ def main():
     cfg_file_path = "/data/jupyter/PETR/configs/_base_/datasets/coco_muco_keypoint_3d.py"
     cfg = Config.fromfile(cfg_file_path)
     dataset = [build_dataset(cfg.data.train)]
-    for i in range(1020, 2000):
+    count = 0
+    print(f"start")
+    for i in range(120000, 150000):
         data = dataset[0].__getitem__(i)
-        import pdb;pdb.set_trace()
+        # print(f"有效的数据长度： {data['gt_bboxes']._data.shape[0]}")
+        if data['gt_bboxes']._data.shape[0] == 0:
+            print("error")
+        count += 1
+    print(f"结束, 有效数据个数：{count}")
     # data = dataset[0].__getitem__(1023)
     # import pdb;pdb.set_trace()
     
