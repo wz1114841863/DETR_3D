@@ -294,7 +294,7 @@ class PETRHead3D(AnchorFreeHead):
             (batch_size, input_img_h, input_img_w))  # img_masks: [bs, pad_h, pad_w]
         
         for img_id in range(batch_size):
-            img_h, img_w, _ = img_metas[img_id]['img_shape']  # (pad_h, pad_w)
+            img_h, img_w, _ = img_metas[img_id]['img_shape']  # (source_h, source_w)
             img_masks[img_id, :img_h, :img_w] = 0
 
         mlvl_masks = []
@@ -511,6 +511,7 @@ class PETRHead3D(AnchorFreeHead):
         Returns:
             dict[str, Tensor]: A dictionary of loss components.
         """
+        import pdb;pdb.set_trace()
         assert proposal_cfg is None, '"proposal_cfg" must be None'
         outs = self(x, img_metas)
         memory, mlvl_masks = outs[-2:]

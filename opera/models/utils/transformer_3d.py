@@ -488,8 +488,8 @@ class PETRTransformer3D(Transformer):
                 valid_ratios[:, None, lvl, 0] * W)  # [bs, h * w], 横坐标归一化
             ref = torch.stack((ref_x, ref_y), -1)  # [bs, h * w, 2], (x, y)
             reference_points_list.append(ref)  
-        reference_points = torch.cat(reference_points_list, 1)  # [1, sum(h*w), 2], 归一化的坐标
-        reference_points = reference_points[:, :, None] * valid_ratios[:, None]  # [1, sum(h*w), 4, 2]
+        reference_points = torch.cat(reference_points_list, 1)  # [bs, sum(h*w), 2], 归一化的坐标
+        reference_points = reference_points[:, :, None] * valid_ratios[:, None]  # [bs, sum(h*w), 4, 2]
         return reference_points
 
     def get_valid_ratio(self, mask):
@@ -497,11 +497,11 @@ class PETRTransformer3D(Transformer):
         未填充的长、宽占mask总长、宽的比例。
         """
         _, H, W = mask.shape
-        valid_H = torch.sum(~mask[:, :, 0], 1)  # 取反再求和， 156。
-        valid_W = torch.sum(~mask[:, 0, :], 1)  # 取反再求和， 100
-        valid_ratio_h = valid_H.float() / H  # 1
-        valid_ratio_w = valid_W.float() / W  # 1
-        valid_ratio = torch.stack([valid_ratio_w, valid_ratio_h], -1)
+        valid_H = torch.sum(~mask[:, :, 0], 1)  # 第一列，取反再求和， sum([bs, H]) -> [bs, valid_h]
+        valid_W = torch.sum(~mask[:, 0, :], 1)  # 第一行，取反再求和， sum([bs, W]) -> [bs, valid_w]
+        valid_ratio_h = valid_H.float() / H  # [ba, valid_h_ratio]
+        valid_ratio_w = valid_W.float() / W  # [ba, valid_w_ratio]
+        valid_ratio = torch.stack([valid_ratio_w, valid_ratio_h], -1)  # [bs, 2]
         return valid_ratio
 
     def get_proposal_pos_embed(self,
@@ -573,6 +573,7 @@ class PETRTransformer3D(Transformer):
                     Only would be returned when `as_two_stage` is True, \
                     otherwise None.
         """
+        import pdb;pdb.set_trace()
         assert self.as_two_stage or query_embed is not None
         feat_flatten = []
         mask_flatten = []

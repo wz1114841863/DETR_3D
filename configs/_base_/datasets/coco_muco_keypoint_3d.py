@@ -1,14 +1,14 @@
 # dataset settings, use 3d dataset
 dataset_type = 'opera.JointDataset'
 # data_root
-# data_coco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/coco2017/'
-# data_muco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/MuCo/'
-# ann_file_path = '/home/notebook/code/personal/S9043252/wz/dataset_anno/MuCo.json',
+data_coco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/coco2017/'
+data_muco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/MuCo/'
+ann_file_path = '/home/notebook/code/personal/S9043252/wz/dataset_anno/MuCo.json',
 
 
-data_coco_root = "/data/coco/"
-data_muco_root = "/data/MuCo/"
-ann_file_path = '/data/MuCo/annotations/MuCo.json'
+# data_coco_root = "/data/coco/"
+# data_muco_root = "/data/MuCo/"
+# ann_file_path = '/data/MuCo/annotations/MuCo.json'
 
 
 img_norm_cfg = dict(
