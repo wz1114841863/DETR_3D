@@ -58,7 +58,6 @@ class PETR(DETR):
         losses = self.bbox_head.forward_train(x, img_metas, gt_bboxes,
                                                 gt_labels, gt_keypoints,
                                                 gt_areas, gt_bboxes_ignore) 
-        import pdb;pdb.set_trace()
         return losses
 
     def forward_dummy(self, img):

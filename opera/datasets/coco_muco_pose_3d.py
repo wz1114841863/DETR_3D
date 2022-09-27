@@ -128,6 +128,11 @@ class JointDataset(CustomDataset):
             if data is None:
                 idx = self._rand_another(idx)
                 continue
+            elif data['gt_bboxes']._data.shape[0] == 0:
+                # print(f"长度为0")
+                idx = self._rand_another(idx) 
+                continue
+            
             return data
         
     def _filter_imgs(self, min_size=32):

@@ -1,11 +1,11 @@
 # dataset settings, use 3d dataset
 dataset_type = 'opera.JointDataset'
 # data_root
-# data_coco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/coco2017/'
-# data_muco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/MuCo/'
+data_coco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/coco2017/'
+data_muco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/MuCo/'
 
-data_coco_root = "/data/coco/"
-data_muco_root = "/data/MuCo/"
+# data_coco_root = "/data/coco/"
+# data_muco_root = "/data/MuCo/"
 
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
@@ -29,36 +29,36 @@ train_pipeline = [
         saturation_range=(0.5, 1.5),
         hue_delta=18,
     ),
-    dict(
-        type='opera.VisImg',
-        draw_bbox=True,
-        draw_keypoints=True,
-        img_prefix='before_filp_00',
-        img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
-    ),
+    # dict(
+    #     type='opera.VisImg',
+    #     draw_bbox=True,
+    #     draw_keypoints=True,
+    #     img_prefix='before_filp_00',
+    #     img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
+    # ),
     dict(
         type='opera.AugRandomFlip',
-        flip_ratio=1.0,  # 测试Flip
+        flip_ratio=0.5,  # 测试Flip
     ),
-    dict(
-        type='opera.VisImg',
-        draw_bbox=True,
-        draw_keypoints=True,
-        img_prefix='before_Random_00',
-        img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
-    ),
+    # dict(
+    #     type='opera.VisImg',
+    #     draw_bbox=True,
+    #     draw_keypoints=True,
+    #     img_prefix='before_Random_00',
+    #     img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
+    # ),
     dict(
         type='opera.AugRandomRotate',
         max_rotate_degree=30,
-        rotate_prob=1.0,  # 测试Rotate
+        rotate_prob=0.5,  # 测试Rotate
     ),
-    dict(
-        type='opera.VisImg',
-        draw_bbox=True,
-        draw_keypoints=True,
-        img_prefix='before_AugMent_00',
-        img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
-    ),
+    # dict(
+    #     type='opera.VisImg',
+    #     draw_bbox=True,
+    #     draw_keypoints=True,
+    #     img_prefix='before_AugMent_00',
+    #     img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
+    # ),
     dict(
         type='mmdet.AutoAugment',
         policies=[
@@ -96,13 +96,13 @@ train_pipeline = [
         ]
     ),
     dict(type='opera.AugPostProcess'),
-    dict(
-        type='opera.VisImg',
-        draw_bbox=True,
-        draw_keypoints=True,
-        img_prefix='before_Normalize_00',
-        img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
-    ),
+    # dict(
+    #     type='opera.VisImg',
+    #     draw_bbox=True,
+    #     draw_keypoints=True,
+    #     img_prefix='before_Normalize_00',
+    #     img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
+    # ),
     dict(type='mmdet.Normalize', **img_norm_cfg),
     dict(type='mmdet.Pad', size_divisor=1),  # 使用0填充图像边缘
     dict(type='opera.FormatBundle',
@@ -150,34 +150,14 @@ test_pipeline = [
 #     )
 # )
 
-data = dict(
-    samples_per_gpu=2,
-    workers_per_gpu=1,
-    train=dict(
-        type=dataset_type,
-        ann_file= '/data/MuCo/annotations/MuCo.json',
-        img_prefix=data_muco_root,
-        pipeline=train_pipeline
-    ),
-    val=dict(
-        type=dataset_type,
-        ann_file=[],
-        pipeline=test_pipeline
-    ),
-    test=dict(
-        ann_file=[],
-        pipeline=test_pipeline,
-    )
-)
-
 # data = dict(
-#     samples_per_gpu=1,
+#     samples_per_gpu=2,
 #     workers_per_gpu=1,
 #     train=dict(
 #         type=dataset_type,
-#         ann_file=['/home/notebook/code/personal/S9043252/wz/dataset_anno//coco_keypoints_train2017.json',
-#                     '/home/notebook/code/personal/S9043252/wz/dataset_anno//MuCo.json'],
-#         img_prefix=[data_coco_root, data_muco_root],
+#         # ann_file= '/data/MuCo/annotations/MuCo.json',
+#         ann_file='/home/notebook/code/personal/S9043252/wz/dataset_anno/MuCo.json',
+#         img_prefix=data_muco_root,
 #         pipeline=train_pipeline
 #     ),
 #     val=dict(
@@ -190,5 +170,26 @@ data = dict(
 #         pipeline=test_pipeline,
 #     )
 # )
+
+data = dict(
+    samples_per_gpu=2,
+    workers_per_gpu=2,
+    train=dict(
+        type=dataset_type,
+        ann_file=['/home/notebook/code/personal/S9043252/wz/dataset_anno//coco_keypoints_train2017.json',
+                    '/home/notebook/code/personal/S9043252/wz/dataset_anno//MuCo.json'],
+        img_prefix=[data_coco_root, data_muco_root],
+        pipeline=train_pipeline
+    ),
+    val=dict(
+        type=dataset_type,
+        ann_file=[],
+        pipeline=test_pipeline
+    ),
+    test=dict(
+        ann_file=[],
+        pipeline=test_pipeline,
+    )
+)
 
 evaluation = dict(interval=1, metric='keypoints')

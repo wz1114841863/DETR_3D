@@ -528,7 +528,6 @@ class PETRHead3D(AnchorFreeHead):
         # TODO 虽然传入了深度信息，但是未使用
         losses = self.forward_refine(memory, mlvl_masks, refine_targets,
                                         losses, img_metas)
-        print(losses)
         return losses
 
     @force_fp32(apply_to=('all_cls_scores', 'all_kpt_preds'))
@@ -791,7 +790,9 @@ class PETRHead3D(AnchorFreeHead):
         if len(pos_areas) == 0:
             loss_oks = pos_kpt_preds.sum() * 0
         else:
-            assert (pos_areas > 0).all()
+            # if not (pos_areas > 0).all():
+            #     import pdb;pdb.set_trace()
+            assert (pos_areas > 0).all(), f"img_meta{img_meta}"
             loss_oks = self.loss_oks(
                 pos_kpt_preds,
                 pos_kpt_targets,
@@ -938,7 +939,7 @@ class PETRHead3D(AnchorFreeHead):
         labels = gt_labels.new_full((num_querys, ),
                                     self.num_classes,
                                     dtype=torch.long)  # [300, ] value= 1 = self.num_classes
-        labels[pos_inds] = gt_labels[sampling_result.pos_assigned_gt_inds]
+        labels[pos_inds] = gt_labels[sampling_result.pos_assigned_gt_inds].long()
         # sampling_result.pos_assigned_gt_inds: gt 中对应的索引，eg [1, 0]
         # sampling_result.pos_assigned_gt_inds = assign_result.gt_inds[pos_inds] - 1
         label_weights = gt_labels.new_ones(num_querys)  # [300, ]， 这里是全1
@@ -948,7 +949,11 @@ class PETRHead3D(AnchorFreeHead):
         kpt_targets = torch.zeros_like(kpt_pred)  # [300, 15*2]
         kpt_weights = torch.zeros_like(kpt_pred)  # [300, 15*2]
         pos_gt_kpts = gt_keypoints[sampling_result.pos_assigned_gt_inds]  # [num_gts, 15, 11]
-        valid_idx = pos_gt_kpts[:, :, 3] > 0  # vis, [num_gts, 15]
+        try:
+            valid_idx = pos_gt_kpts[..., 3] > 0  # vis, [num_gts, 15]
+        except:
+            print("error")
+            import pdb;pdb.set_trace()
         pos_kpt_weights = kpt_weights[pos_inds].reshape(
             pos_gt_kpts.shape[0], kpt_weights.shape[-1] // 2, 2)  # [num_gts, 15, 2]
         pos_kpt_weights[valid_idx] = 1.0
@@ -971,19 +976,22 @@ class PETRHead3D(AnchorFreeHead):
         elif dataset == "MUCO":
             depth_targets = torch.zeros_like(depth_pred)  # [300, 1 + 15]
             depth_weights = torch.zeros_like(depth_pred)  # [300, 1 + 15]
-            pos_gt_kpts = gt_keypoints[sampling_result.pos_assigned_gt_inds]  # [num_gts, 15, 11]
+            gt_keypoints_tmp = gt_keypoints[sampling_result.pos_assigned_gt_inds]
+            pos_gt_kpts = gt_keypoints_tmp  # [num_gts, 15, 11]
             valid_idx = pos_gt_kpts[:, :, 3] > 0  # vis, [num_gts, 15]
             # depth_weights[pos_inds][..., 0] = 1.0  # reference point 的 weight 直接设为1
             # depth_weights[pos_inds][..., 1:] = valid_idx.int()  # 形状要对应上
             # TODO 为什么无法赋值
             num_gts = gt_keypoints.shape[0]
-            refer_point_weights = torch.ones((num_gts, 1)).cuda()  # [num_gst, 1]
+            refer_point_weights = torch.ones((num_gts, 1)).cuda()  # [num_gts, 1]
             depth_weights[pos_inds] = torch.cat((refer_point_weights,valid_idx.int()), -1)  # [num_gts, 1 + 15]
             # 这里直接对gt_targets进行变换，之后计算loss时就不用再针对进行变换
-            kpt_gt_depth = gt_keypoints[sampling_result.pos_assigned_gt_inds][..., 6] * \
-                img_w / gt_keypoints[sampling_result.pos_assigned_gt_inds][..., 7]  # [num_gts, 15]
+            # FIXME, 是否除数为零
+            kpt_gt_depth = gt_keypoints_tmp[..., 6] * img_w / (gt_keypoints_tmp[..., 7] + 1)  # [num_gts, 15]
             kpt_center_depth = torch.sum(kpt_gt_depth, -1) / torch.sum(valid_idx.int(), -1)  # [num_gts, ]
             depth_targets[pos_inds] = torch.cat((kpt_center_depth.unsqueeze(-1), kpt_gt_depth), -1)
+            if torch.isnan(depth_targets).int().sum():
+                import pdb;pdb.set_trace()
         else:
             raise  NotImplementedError("未知的dataset in _get_target_single.")
 
@@ -1077,7 +1085,6 @@ class PETRHead3D(AnchorFreeHead):
             reduce_mean(depth_weights.sum()), min=1).item()
         loss_depth = self.loss_depth_rpn(
             depth_preds, depth_targets, depth_weights, avg_factor=num_valid_depth)
-
         return loss_cls, loss_kpt, loss_depth
 
     @force_fp32(apply_to=('all_cls_scores', 'all_kpt_preds'))

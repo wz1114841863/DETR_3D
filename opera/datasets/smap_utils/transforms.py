@@ -520,7 +520,7 @@ class AugPostProcess():
             areas = []
             for i in range(len(bboxs)):
                 [left_top_x, left_top_y, right_bottom_x, right_bottom_y] = bboxs[i]
-                area = (right_bottom_x - left_top_x) * (right_bottom_y - left_top_y)
+                area = np.abs((right_bottom_x - left_top_x) * (right_bottom_y - left_top_y))
                 areas.append(area)
             results['gt_areas'] = np.asarray(areas, dtype=np.float32)
         elif dataset == "COCO":
