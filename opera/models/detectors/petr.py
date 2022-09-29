@@ -468,7 +468,7 @@ class PETR(DETR):
                 polygons.append(Polygon(np_poly))
                 color.append(ec[j])
             if segms is not None:
-                color_mask = mask_colors[labels[i]]
+                color_mask = mask_color[labels[i]]
                 mask = segms[i].astype(bool)
                 img[mask] = img[mask] * 0.5 + color_mask * 0.5
 

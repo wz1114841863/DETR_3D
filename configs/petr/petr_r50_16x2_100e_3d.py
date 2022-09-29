@@ -139,7 +139,7 @@ model = dict(
             oks_cost=dict(type='opera.OksCost', num_keypoints=15, weight=7.0),
             depth_cost=dict(type='opera.DepthL1Cost', 
                 kpt_depth_weight=0.001, 
-                refer_depth_weight=0.001),  # TODO 优化DepthL1Loss
+                refer_depth_weight=0.001),
         )
     ),
     

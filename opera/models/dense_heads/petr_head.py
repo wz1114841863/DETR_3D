@@ -941,8 +941,8 @@ class PETRHead(AnchorFreeHead):
                 with [p^{1}_x, p^{1}_y, p^{1}_v, ..., p^{K}_x, p^{K}_y,
                 p^{K}_v] format.
         """
-        cls_scores = all_cls_scores[-1]  # [bs, 300, 1]
-        kpt_preds = all_kpt_preds[-1]  # [bx, 300, 34]
+        cls_scores = all_cls_scores[-1]  # [1, 300, 1]
+        kpt_preds = all_kpt_preds[-1]  # [1, 300, 34]
         # cls_scores = enc_cls_scores
         # kpt_preds = enc_kpt_preds
 
@@ -1018,10 +1018,10 @@ class PETRHead(AnchorFreeHead):
         # start = time.time()
         refine_targets = (kpt_pred, None, None, torch.ones_like(kpt_pred))
         refine_outputs = self.forward_refine(memory, mlvl_masks,
-                                                refine_targets, None, None)
+                                                refine_targets, None, None)  # (num_ref, 100, 17, 2)
         # end = time.time()
         # print(f'refine time: {end - start:.6f}')
-        det_kpts = refine_outputs[-1]  # [100, 17, 2]
+        det_kpts = refine_outputs[-1]  #最后一层的输出, [100, 17, 2]
         # img_shape: (1241, 800, 3)
         det_kpts[..., 0] = det_kpts[..., 0] * img_shape[1]  # [100, 17]
         det_kpts[..., 1] = det_kpts[..., 1] * img_shape[0]  # [100, 17]

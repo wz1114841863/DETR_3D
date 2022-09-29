@@ -236,6 +236,7 @@ class CocoPoseDataset(CocoDataset):
 
         Args:
             results (list[list | tuple]): Testing results of the dataset.
+            [num_imgs, [[100, 5], [100, 3]]
             metric (str | list[str]): Metrics to be evaluated. Options are
                 'bbox', 'segm', 'keypoints', 'proposal', 'proposal_fast'.
             logger (logging.Logger | str | None): Logger used for printing
@@ -270,7 +271,7 @@ class CocoPoseDataset(CocoDataset):
         for metric in metrics:
             if metric not in allowed_metrics:
                 raise KeyError(f'metric {metric} is not supported')
-        if iou_thrs is None:
+        if iou_thrs is None:  # [0.5 , 0.55, 0.6 , 0.65, 0.7 , 0.75, 0.8 , 0.85, 0.9 , 0.95]
             iou_thrs = np.linspace(
                 .5, 0.95, int(np.round((0.95 - .5) / .05)) + 1, endpoint=True)
         if metric_items is not None:
@@ -302,7 +303,7 @@ class CocoPoseDataset(CocoDataset):
             if metric not in result_files:
                 raise KeyError(f'{metric} is not in results')
             try:
-                predictions = mmcv.load(result_files[metric])
+                predictions = mmcv.load(result_files[metric])  # num_imgs * 100
                 if iou_type == 'segm':
                     # Refer to https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocotools/coco.py#L331  # noqa
                     # When evaluating mask AP, if the results contain bbox,

@@ -11,7 +11,7 @@ from mmdet.core import bbox_mapping_back, multiclass_nms
 from mmdet.models.detectors.single_stage import SingleStageDetector
 from mmdet.models.detectors.detr import DETR
 
-from opera.core.keypoint import bbox_kpt2result, kpt_mapping_back
+from opera.core.keypoint import bbox_kpt2result_3d, kpt_mapping_back
 from ..builder import DETECTORS
 
 
@@ -105,11 +105,11 @@ class PETR3D(DETR):
             feat, img_metas, rescale=rescale)  # petr_head.simple_test_bboxes
 
         bbox_kpt_results = [
-            bbox_kpt2result(det_bboxes, det_labels, det_kpts,
+            bbox_kpt2result_3d(det_bboxes, det_labels, det_kpts, det_depths,
                             self.bbox_head.num_classes)
-            for det_bboxes, det_labels, det_kpts in results_list
+            for det_bboxes, det_labels, det_kpts, det_depths in results_list
         ]
-        return bbox_kpt_results  #[100, 5], [100, 17, 3]
+        return bbox_kpt_results  # [100, 5], [100, 15, 3], [100, 16]
 
     def merge_aug_results(self, aug_bboxes, aug_kpts, aug_scores, img_metas):
         """Merge augmented detection bboxes and keypoints.
@@ -177,7 +177,7 @@ class PETR3D(DETR):
             (det_kpts, det_kpts.new_ones(det_kpts[..., :1].shape)), dim=2)
 
         bbox_kpt_results = [
-            bbox_kpt2result(det_bboxes, det_labels, det_kpts,
+            bbox_kpt2result_3d(det_bboxes, det_labels, det_kpts,
                             self.bbox_head.num_classes)
         ]
         return bbox_kpt_results

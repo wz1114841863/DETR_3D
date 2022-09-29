@@ -4,6 +4,7 @@ import warnings
 from mmdet.datasets import CustomDataset
 import mmcv
 import numpy as np
+import json
 
 
 from .builder import DATASETS
@@ -151,7 +152,49 @@ class JointDataset(CustomDataset):
             img_info = self.data_infos[i]
             if img_info['img_width'] / img_info['img_height'] > 1:
                 self.flag[i] = 1
-    
+
+    def evaluate(self,
+                    results,
+                    anno_path,
+                    metric='keypoints',
+                    logger=None,
+                    jsonfile_prefix=None,
+                    classwise=False,
+                    proposal_nums=(100, 300, 1000),
+                    iou_thrs=None,
+                    metric_items=None):
+        """用于生成输出的json文件。
+
+        Args:
+            results (_type_): 网络输出结果
+            anno_path: MuPoTs.json文件存放位置
+            metric (str, optional): _description_. Defaults to 'keypoints'.
+            logger (_type_, optional): _description_. Defaults to None.
+            jsonfile_prefix (_type_, optional): _description_. Defaults to None.
+            classwise (bool, optional): _description_. Defaults to False.
+            proposal_nums (tuple, optional): _description_. Defaults to (100, 300, 1000).
+            iou_thrs (_type_, optional): _description_. Defaults to None.
+            metric_items (_type_, optional): _description_. Defaults to None.
+        """
+        # 读取json文件
+        with open(anno_path, 'w') as fp:
+            annos = json.load(fp)['root']
+        
+        assert len(annos) == len(results), f"len(anno) != len(results), {len(anno)}"
+        for i in range(len(annos)):
+            anno = annos[i]
+            result = results[i]
+            # 取出result中对应数据
+            bboxes, kpts,  depths= result[0][0], result[1][0], result[2][0]
+            assert bboxes.shape == (100, 5), \
+                f"error. bboxes.shape:{bboxes.shape}"
+            assert kpts.shape == (100, 5), \
+                f"error. kpts.shape:{bboxes.shape}"
+            assert depths.shape == (100, 5), \
+                f"error. depths.shape:{bboxes.shape}"            
+            # 
+        
+        
     def __repr__(self):
         dataset_type = 'Test' if self.test_mode else 'Train'
         result = (f'\n{self.__class__.__name__} {dataset_type} dataset '

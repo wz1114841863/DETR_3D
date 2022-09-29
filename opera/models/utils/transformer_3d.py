@@ -281,7 +281,7 @@ class PetrTransformerDecoder3D(TransformerLayerSequence):
                 tmp = depth_branches[lid](output)  # [bs, 300, 1 + 15]
                 if kpts_depth.shape[-1] == 1 + self.num_keypoints:
                     new_kpts_depth = tmp + kpts_depth
-                    new_kpts_depth = new_kpts_depth.detach()
+                    kpts_depth = new_kpts_depth.detach()
                 else:
                     raise NotImplementedError
             
@@ -290,8 +290,7 @@ class PetrTransformerDecoder3D(TransformerLayerSequence):
             if self.return_intermediate:
                 intermediate.append(output)
                 intermediate_reference_points.append(reference_points)
-                intermediate_kpts_depth.append(new_kpts_depth)
-
+                intermediate_kpts_depth.append(kpts_depth)
 
         if self.return_intermediate:
             return torch.stack(intermediate), \
@@ -573,7 +572,6 @@ class PETRTransformer3D(Transformer):
                     Only would be returned when `as_two_stage` is True, \
                     otherwise None.
         """
-        import pdb;pdb.set_trace()
         assert self.as_two_stage or query_embed is not None
         feat_flatten = []
         mask_flatten = []
@@ -665,8 +663,7 @@ class PETRTransformer3D(Transformer):
             enc_outputs_kpt_unact[..., 0::2] += output_proposals[..., 0:1]  # [bs, sum(h*w), 15]
             enc_outputs_kpt_unact[..., 1::2] += output_proposals[..., 1:2]  # [bs, sum(h*w), 15]
             # TODO, 将参考点移至骨盆点
-            # depth, 
-            # FIXME 由于初始化为全零，这里的depth全为零。
+            # depth
             enc_outputs_depth = \
                 depth_branches[self.decoder.num_layers](output_memory)  # [bs, sum(h*w), 1 + 15]
             # topk

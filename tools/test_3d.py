@@ -4,6 +4,7 @@ import os
 import os.path as osp
 import time
 import warnings
+import numpy as np
 
 import mmcv
 import torch
@@ -15,7 +16,7 @@ from mmdet.utils import (build_ddp, build_dp, compat_cfg, get_device,
                             replace_cfg_vals, setup_multi_processes,
                             update_data_root)
 
-from opera.apis import multi_gpu_test, single_gpu_test
+from opera.apis import multi_gpu_test_3d, single_gpu_test
 from opera.datasets import (build_dataloader, build_dataset,
                             replace_ImageToTensor)
 from opera.models import build_model
@@ -40,6 +41,11 @@ def parse_args():
     # )
     parser.add_argument(
         'checkpoint', 
+        help='checkpoint file',
+    )
+    parser.add_argument(
+        '--MuPoTs_json_path', 
+        default="",
         help='checkpoint file',
     )
     parser.add_argument(
@@ -257,6 +263,7 @@ def main():
         model.CLASSES = dataset.CLASSES
 
     if not distributed:
+        raise NotImplementedError
         model = build_dp(model, cfg.device, device_ids=cfg.gpu_ids)
         outputs = single_gpu_test(model, data_loader, args.show, args.show_dir,
                                     args.show_score_thr)
@@ -266,7 +273,7 @@ def main():
             cfg.device,
             device_ids=[int(os.environ['LOCAL_RANK'])],
             broadcast_buffers=False)
-        outputs = multi_gpu_test(
+        outputs = multi_gpu_test_3d(
             model, data_loader, args.tmpdir, args.gpu_collect
             or cfg.evaluation.get('gpu_collect', False))
 
@@ -276,9 +283,11 @@ def main():
         if args.out:
             print(f'\nwriting results to {args.out}')
             mmcv.dump(outputs, args.out)
+            
         kwargs = {} if args.eval_options is None else args.eval_options
         if args.format_only:
-            dataset.format_results(outputs, **kwargs)
+            pass
+
         if args.eval:
             eval_kwargs = cfg.get('evaluation', {}).copy()
             # hard-code way to remove EvalHook args
@@ -288,12 +297,8 @@ def main():
             ]:
                 eval_kwargs.pop(key, None)
             eval_kwargs.update(dict(metric=args.eval, **kwargs))
-            metric = dataset.evaluate(outputs, **eval_kwargs)
-            print(metric)
-            metric_dict = dict(config=args.config, metric=metric)
-            if args.work_dir is not None and rank == 0:
-                mmcv.dump(metric_dict, json_file)
-
+            metric = dataset.evaluate(outputs, anno_path=args.MuPoTs_json_path, **eval_kwargs)
+            
 
 if __name__ == '__main__':
     main()

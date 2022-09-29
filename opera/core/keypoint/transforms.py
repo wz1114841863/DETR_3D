@@ -87,7 +87,7 @@ def draw_umich_gaussian(heatmap, center, radius, k=1):
 
     masked_heatmap = heatmap[y - top:y + bottom, x - left:x + right]
     masked_gaussian = gaussian[radius - top:radius + bottom,
-                               radius - left:radius + right]
+                                radius - left:radius + right]
     # assert masked_gaussian.eq(1).float().sum() == 1
     if min(masked_gaussian.shape) > 0 and min(masked_heatmap.shape) > 0:
         heatmap[y - top:y + bottom, x - left:x + right] = torch.max(
@@ -99,10 +99,10 @@ def draw_short_range_offset(offset_map, mask_map, gt_kp, radius):
     gt_kp_int = torch.floor(gt_kp)
     x_coord = gt_kp[0] - \
         (torch.arange(-radius, radius + 1, dtype=torch.float32,
-                      device=offset_map.device) + gt_kp_int[0])
+                        device=offset_map.device) + gt_kp_int[0])
     y_coord = gt_kp[1] - \
         (torch.arange(-radius, radius + 1, dtype=torch.float32,
-                      device=offset_map.device) + gt_kp_int[1])
+                        device=offset_map.device) + gt_kp_int[1])
     y_map, x_map = torch.meshgrid(y_coord, x_coord)
     short_offset = torch.cat([x_map.unsqueeze(0), y_map.unsqueeze(0)], dim=0)
 
@@ -116,7 +116,7 @@ def draw_short_range_offset(offset_map, mask_map, gt_kp, radius):
 
     masked_offset_map = offset_map[:, y - top:y + bottom, x - left:x + right]
     masked_short_offset = short_offset[:, radius - top:radius + bottom,
-                                       radius - left:radius + right]
+                                        radius - left:radius + right]
     if min(masked_short_offset.shape) > 0 and min(masked_offset_map.shape) > 0:
         offset_map_distance = torch.pow(masked_offset_map, 2).sum(
             dim=0, keepdim=True).expand(masked_offset_map.shape)
@@ -153,6 +153,35 @@ def bbox_kpt2result(bboxes, labels, kpts, num_classes):
         return [bboxes[labels == i, :] for i in range(num_classes)], \
             [kpts[labels == i, :, :] for i in range(num_classes)]
 
+
+def bbox_kpt2result_3d(bboxes, labels, kpts, depths, num_classes):
+    """Convert detection results to a list of numpy arrays.
+
+    Args:
+        bboxes (torch.Tensor | np.ndarray): shape (n, 5).  # [100, 5]
+        labels (torch.Tensor | np.ndarray): shape (n, ).  # 100
+        kpts (torch.Tensor | np.ndarray): shape (n, K, 3).  # [100, 17, 3]
+        num_classes (int): class number, including background class.  # 1
+
+    Returns:
+        list(ndarray): bbox and keypoint results of each class.
+    """
+    if bboxes.shape[0] == 0:
+        return [np.zeros((0, 5), dtype=np.float32) for i in range(num_classes)], \
+            [np.zeros((0, kpts.size(1), 3), dtype=np.float32)
+                for i in range(num_classes)], \
+            [np.zeros((0, depths.size(1), 16), dtype=np.float32) 
+                for i in range(num_classes)]
+    else:
+        if isinstance(bboxes, torch.Tensor):
+            bboxes = bboxes.detach().cpu().numpy()
+            labels = labels.detach().cpu().numpy()
+            kpts = kpts.detach().cpu().numpy()
+            depths = depths.detach().cpu().numpy()
+            
+        return [bboxes[labels == i, :] for i in range(num_classes)], \
+            [kpts[labels == i, :, :] for i in range(num_classes)], \
+            [depths[labels == i, :] for i in range(num_classes)]
 
 def kpt_flip(kpts, img_shape, flip_pairs, direction):
     """Flip keypoints horizontally.

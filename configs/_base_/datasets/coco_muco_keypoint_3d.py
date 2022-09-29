@@ -3,13 +3,15 @@ dataset_type = 'opera.JointDataset'
 # data_root
 data_coco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/coco2017/'
 data_muco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/MuCo/'
-ann_file_path = '/home/notebook/code/personal/S9043252/wz/dataset_anno/MuCo.json',
+data_mupots3d_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/'
 
+ann_coco_path = '/home/notebook/code/personal/S9043252/wz/dataset_anno//coco_keypoints_train2017.json'
+ann_muco_path = '/home/notebook/code/personal/S9043252/wz/dataset_anno/MuCo.json'
+ann_mupots3d_path = "/home/notebook/code/personal/S9043252/wz/dataset_anno/MuPoTS.json"
 
 # data_coco_root = "/data/coco/"
 # data_muco_root = "/data/MuCo/"
 # ann_file_path = '/data/MuCo/annotations/MuCo.json'
-
 
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
@@ -117,14 +119,12 @@ train_pipeline = [
 
 # 尚未修改
 test_pipeline = [
-    dict(type='mmdet.LoadImageFromFile'),
+    dict(type='opera.LoadImgFromFile'),
     dict(
         type='mmdet.MultiScaleFlipAug',
         img_scale=(1333, 800),
         flip=False,
         transforms=[
-            dict(type='mmdet.Resize', keep_ratio=True),
-            dict(type='mmdet.RandomFlip'),
             dict(type='mmdet.Normalize', **img_norm_cfg),
             dict(type='mmdet.Pad', size_divisor=1),
             dict(type='mmdet.ImageToTensor', keys=['img']),
@@ -159,17 +159,20 @@ data = dict(
     workers_per_gpu=1,
     train=dict(
         type=dataset_type,
-        ann_file=ann_file_path,
+        ann_file=ann_muco_path,
         img_prefix=data_muco_root,
         pipeline=train_pipeline
     ),
     val=dict(
         type=dataset_type,
-        ann_file=[],
+        ann_file=ann_mupots3d_path,
+        img_prefix=data_mupots3d_root,
         pipeline=test_pipeline
     ),
     test=dict(
-        ann_file=[],
+        type=dataset_type,
+        ann_file=ann_mupots3d_path,
+        img_prefix=data_mupots3d_root,
         pipeline=test_pipeline,
     )
 )
