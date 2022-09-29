@@ -3,7 +3,7 @@ dataset_type = 'opera.JointDataset'
 # data_root
 data_coco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/coco2017/'
 data_muco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/MuCo/'
-data_mupots3d_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/'
+data_mupots3d_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/MuPoTs/MultiPersonTestSet/'
 
 ann_coco_path = '/home/notebook/code/personal/S9043252/wz/dataset_anno//coco_keypoints_train2017.json'
 ann_muco_path = '/home/notebook/code/personal/S9043252/wz/dataset_anno/MuCo.json'
@@ -125,11 +125,13 @@ test_pipeline = [
         img_scale=(1333, 800),
         flip=False,
         transforms=[
+            dict(type='mmdet.Resize', keep_ratio=True),
+            dict(type='mmdet.RandomFlip'),
             dict(type='mmdet.Normalize', **img_norm_cfg),
             dict(type='mmdet.Pad', size_divisor=1),
             dict(type='mmdet.ImageToTensor', keys=['img']),
             dict(type='mmdet.Collect', keys=['img']),
-    ])
+        ])
 ]
 
 

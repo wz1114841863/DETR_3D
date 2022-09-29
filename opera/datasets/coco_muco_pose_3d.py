@@ -79,7 +79,23 @@ class JointDataset(CustomDataset):
             list[int]: 图片中包含的class
         """
         return self.data_infos[idx]['cam_id']
-    
+
+    def prepare_test_img(self, idx):
+        """Get testing data after pipeline.
+
+        Args:
+            idx (int): Index of data.
+
+        Returns:
+            dict: Testing data after pipeline with new keys introduced by \
+                pipeline.
+        """
+
+        ann_info = self.get_ann_info(idx)
+        results = dict(ann_info=ann_info)
+        self.pre_pipeline(results)
+        return self.pipeline(results)
+
     def prepare_train_img(self, idx):
         """获取管道后的训练数据和注释文件
         Args:

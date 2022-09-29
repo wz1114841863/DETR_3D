@@ -811,7 +811,7 @@ class PETRHead3D(AnchorFreeHead):
         # kpt_real_depth = depth_preds[..., 1:]  # [bs * 300, 15]
         # kpt_real_depth_tmp = kpt_real_depth + refer_center_depth_tmp  # [bs * 300, 15]
         # kpt_depth_preds = torch.cat((refer_center_depth.unsqueeze(-1), kpt_real_depth_tmp), -1)
-        depth_preds_tmp = depth_preds.copy()  # 保证传回的depth_preds依旧是绝对 + 相对
+        depth_preds_tmp = depth_preds.clone()  # 保证传回的depth_preds依旧是绝对 + 相对
         depth_preds_tmp[..., 1:] = depth_preds_tmp[..., 0].unsqueeze(-1) + depth_preds_tmp[..., 1:]
         loss_depth = self.loss_depth(
             depth_preds_tmp, depth_targets, depth_weights, avg_factor=num_valid_depth)
@@ -989,7 +989,7 @@ class PETRHead3D(AnchorFreeHead):
             depth_weights[pos_inds] = torch.cat((refer_point_weights, valid_idx.int()), -1)  # [num_gts, 1 + 15]
             # 这里直接对gt_targets进行变换，之后计算loss时就不用再针对进行变换, 但是需要考虑preds中绝对深度与相对深度
             # FIXME, 是否除数为零
-            kpt_gt_depth = torch.zeros_like(valid_idx)
+            kpt_gt_depth = torch.zeros((num_gts, 15), dtype=torch.float32).cuda()
             kpt_gt_depth[valid_idx] = gt_keypoints_tmp[valid_idx][..., 6] * img_w / \
                 gt_keypoints_tmp[valid_idx][..., 7]  # [num_gts, 15]
             kpt_center_depth = torch.sum(kpt_gt_depth, -1) / torch.sum(valid_idx.int(), -1)  # [num_gts, ]
@@ -1262,6 +1262,7 @@ class PETRHead3D(AnchorFreeHead):
                 (n, K, 3), in [p^{1}_x, p^{1}_y, p^{1}_v, p^{K}_x, p^{K}_y,
                 p^{K}_v] format.
         """
+        import pdb;pdb.set_trace()
         # forward of this head requires img_metas
         outs = self.forward(feats, img_metas)
         results_list = self.get_bboxes(*outs, img_metas, rescale=rescale)
