@@ -4,6 +4,7 @@ import os
 import os.path as osp
 import time
 import warnings
+import json
 import numpy as np
 
 import mmcv
@@ -297,8 +298,10 @@ def main():
             ]:
                 eval_kwargs.pop(key, None)
             eval_kwargs.update(dict(metric=args.eval, **kwargs))
-            metric = dataset.evaluate(outputs, anno_path=args.MuPoTs_json_path, **eval_kwargs)
-            
+            result_json = dataset.evaluate(outputs, anno_path=args.MuPoTs_json_path, **eval_kwargs)
+            file_path = ""
+            with open(file_path, 'w+') as fp:
+                json.dump(result_json, fp, indent=4)
 
 if __name__ == '__main__':
     main()
