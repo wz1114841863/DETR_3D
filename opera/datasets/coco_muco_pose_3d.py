@@ -393,9 +393,11 @@ class JointDataset(CustomDataset):
                     gt_bodys.append(anno['bodys'][j])
                     gt_bboxs.append(anno['bboxs'][j])
             gt_bodys = np.asarray(gt_bodys)  # [num_gts, 15, 11]
-            gt_bodys = self._proc_gt(gt_bodys)  # [num_gts, ]
+            gt_bodys = self._proc_gt(gt_bodys)  # [num_gts, 16, 11]
+            assert gt_bodys.shape[-2:] == (16, 11) , f"bodys.shape: {gt_bodys.shape}"
             gt_bboxs = np.asarray(gt_bboxs)
             gt_bboxs = self._proc_gt_bboxs(gt_bboxs)
+            assert gt_bboxs.shape[-1] == 4, f"bboxs.shape: {gt_bboxs.shape}"
             num_gts = len(gt_bodys)
             if num_gts == 0:
                 continue
@@ -418,6 +420,12 @@ class JointDataset(CustomDataset):
             pred_bodys_2d, pred_rdepths = self._proc_2d(pred_kpts, pred_depths, pred_scores, scale_dict)  
             # pred_bodys_2d: (x, y, relative depth, scores), pred_rdepths: (absolute depth) 骨盆点的绝对深度
             pred_bodys_3d = self._proc_3d(pred_bodys_2d, pred_rdepths, scale_dict)  # (X, Y, absolute depth, scores)
+            # 检验长度
+            assert len(gt_bodys) == num_gts
+            assert pred_bodys_2d.shape[0] == num_gts and pred_bodys_2d.shape[-2:] == (15, 4)
+            assert pred_bodys_3d.shape[0] == num_gts and pred_bodys_2d.shape[-2:] == (15, 4)
+            assert pred_rdepths.shape[0] == num_gts
+
             pair = dict()
             pair['pred_2d'] = pred_bodys_2d.tolist()
             pair['pred_3d'] = pred_bodys_3d.tolist()

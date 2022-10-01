@@ -12,6 +12,7 @@ def convert(path=''):
     pose2d = dict()
     gt3d = dict()
     count = dict()
+    import pdb;pdb.set_trace()
     for i in range(len(pairs_3d)):  
         name = pairs_3d[i]['image_path']
         name = name[name.index('TS'):]
@@ -28,19 +29,19 @@ def convert(path=''):
         else:
             count[ts] += 1
 
-        pred_3ds = np.array(pairs_3d[i]['pred_3d'])
-        gt_3ds = np.array(pairs_3d[i]['gt_3d'])
-        intri = gt_3ds[0,0,3:7]
+        pred_3ds = np.array(pairs_3d[i]['pred_3d'])  # [num_gt, 15, 4]
+        gt_3ds = np.array(pairs_3d[i]['gt_3d'])  # [num_gts, 16, 7]
+        intri = gt_3ds[0,0,3:7]  # [fx, fy, cx, cy]
         K = np.array([[intri[1], 0, intri[2]],
                         [0, intri[1], intri[3]],
                         [0, 0, 1]])
 
         pred_2ds = pairs_3d[i]['pred_2d'] 
-        pred_2ds = np.array(pred_2ds )
+        pred_2ds = np.array(pred_2ds)  # [num_gts, 15, 4]
 
         crop_x = 832
         crop_y = 512
-        scale = min(crop_x / float(width), crop_y / float(height))
+        scale = min(crop_x / float(width), crop_y / float(height))  # [0.4333]
         adj_p2d = np.array([0, 0])
 
         if height * scale < crop_y:
@@ -51,7 +52,7 @@ def convert(path=''):
             adj_p2d = np.array([pad, 0])
         
         for ih in range(len(pred_2ds)):
-            joint2d = np.array(pred_2ds[ih])
+            joint2d = np.array(pred_2ds[ih])  # [15, 4]
             joint2d = joint2d[:, :2]
             joint2d -= np.expand_dims(adj_p2d, axis=0)
             joint2d /= scale
@@ -62,7 +63,7 @@ def convert(path=''):
             op_2ds = pred_2ds.copy()
             # deal with 3d (input: op_2ds, relZ)
             new_pred_3ds = pred_3ds.copy()
-            iK = np.linalg.inv(K)
+            iK = np.linalg.inv(K)  # 矩阵求逆
             for ih in range(new_pred_3ds.shape[0]):
                 if ih > len(op_2ds)-1:
                     continue
