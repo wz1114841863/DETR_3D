@@ -85,5 +85,5 @@ def convert(path=''):
         scio.savemat('./pose2d.mat', {'preds_2d_kpt':pose2d})
 
 if __name__ == "__main__":
-    file_path = ""
+    file_path = "/home/notebook/code/personal/S9043252/wz/PETR_3D/work_dirs/3d_0930_train_result/output.json"
     convert(file_path)

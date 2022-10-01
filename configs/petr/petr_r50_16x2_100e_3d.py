@@ -143,8 +143,8 @@ model = dict(
         )
     ),
     
-    test_cfg=dict(max_per_img=100),
-)  # set 'max_per_img=20' for time counting
+    test_cfg=dict(max_per_img=100),  # eval时保留多少个候选目标
+) 
 
 # optimizer
 optimizer = dict(

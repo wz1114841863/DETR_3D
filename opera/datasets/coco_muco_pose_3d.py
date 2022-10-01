@@ -202,9 +202,9 @@ class JointDataset(CustomDataset):
 
         return inter_bbox, iou
 
-    def _get_pred_index(self, gt_bboxs, pred_bboxs):
+    def _get_pred_indexs(self, gt_bboxs, pred_bboxs):
         """根据iou来计算与gt最为匹配的输出
-
+        可能存在问题：bbox重叠之类的影响
         Args:
             gt_bboxs (numpy.array): 
                 gt bboxs, [num_gts, 4]
@@ -214,19 +214,24 @@ class JointDataset(CustomDataset):
                 [top_left_x, top_left_y, bottom_right_x, bottom_right_y, scores]
         """
         pred_indexs = []
-        for i in range(gt_bboxs):
+        for i in range(len(gt_bboxs)):
             index = -1
             iou = 0.
-            for j in range(pred_bboxs):
-                _, iou_tmp = self._calc_iou(gt_bboxs[i][:4], pred_bboxs[j])
+            for j in range(len(pred_bboxs)):
+                _, iou_tmp = self._calc_iou(gt_bboxs[i], pred_bboxs[j][:4])
                 if (iou_tmp != None and iou_tmp > iou and j not in pred_indexs):
                     iou = iou_tmp
                     index = j
+            if index == -1:
+                # TODO bug 待修复
+                print(f"index == -1")
+                index = 0
+            # assert index != -1, f"没有一个bbox与之匹配"
             pred_indexs.append(index)
             
         return pred_indexs
 
-    def _proc_gt(self,gt_bodys):
+    def _proc_gt(self, gt_bodys):
         """添加中心点
 
         Args:
@@ -245,6 +250,15 @@ class JointDataset(CustomDataset):
         
         return new_gt_bodys 
     
+    def _proc_gt_bboxs(self, gt_bboxs):
+        """
+            处理gt bboxs 的格式
+        """
+        gt_bboxs[:, 2] += gt_bboxs[:, 0]
+        gt_bboxs[:, 3] += gt_bboxs[:, 1]
+
+        return gt_bboxs
+
     def _proc_2d(self, pred_kpts, pred_depths, pred_scores, scale_dict):
         """生成2d坐标和相对于骨盆点的深度
 
@@ -273,7 +287,7 @@ class JointDataset(CustomDataset):
             # 其余点相对于骨盆点的深度
             kpt_rel_root_depth = kpt_abs_depth - kpt_abs_depth[root_idx]
             
-            pred_bodys_2d[i][:, :2] = pred_kpts
+            pred_bodys_2d[i][:, :2] = pred_kpts[i]
             pred_bodys_2d[i][:, 2] = kpt_rel_root_depth
             pred_bodys_2d[i][:, 3] = pred_scores[i]
             pred_rdepths[i] = root_abs_depth
@@ -320,7 +334,6 @@ class JointDataset(CustomDataset):
         pred_bodys_3d = self._get_3d_points(coords_2d, root_depth, K)
         return pred_bodys_3d
         
-    
     def evaluate(self,
                     results,
                     anno_path,
@@ -331,7 +344,7 @@ class JointDataset(CustomDataset):
                     proposal_nums=(100, 300, 1000),
                     iou_thrs=None,
                     metric_items=None):
-        """生成用于进行eval的json文件， 参考SMAP。
+        """生成用于进行eval的json文件, 参考SMAP。
 
         Args:
             results (_type_): 网络输出结果
@@ -358,11 +371,12 @@ class JointDataset(CustomDataset):
         #                        'image_path': relative image path}
         num_keypoints = 15
         # TODO 查看eval时是否看顺序读取数据集，否则下面代码逻辑错误
+        
         for i in range(len(results)):
             anno = self.data_infos[i]
             result = results[i]
             # 取出result中对应数据
-            bboxes, kpts,  depths= result[0][0], result[1][0], result[2][0]
+            bboxes, kpts, depths= result[0][0], result[1][0], result[2][0]
             assert bboxes.shape == (100, 5), \
                 f"error. bboxes.shape:{bboxes.shape}"
             assert kpts.shape == (100, 15, 2), \
@@ -372,14 +386,16 @@ class JointDataset(CustomDataset):
             # gt 处理
             gt_bodys = []
             gt_bboxs = []
-            for j in range(len(anno)):
-                valid_num = anno['bodys'][j, :, 3] > 0  # []
-                if valid_num.int().sum() > 0:
+            anno_bodys = np.asarray(anno['bodys'])
+            for j in range(len(anno_bodys)):
+                valid_num = anno_bodys[j][:, 3] > 0  # [15, ]
+                if valid_num.sum() > 0:
                     gt_bodys.append(anno['bodys'][j])
                     gt_bboxs.append(anno['bboxs'][j])
-            gt_bodys = np.asarray(gt_bodys)
-            gt_bodys = self._proc_gt(gt_bodys)
+            gt_bodys = np.asarray(gt_bodys)  # [num_gts, 15, 11]
+            gt_bodys = self._proc_gt(gt_bodys)  # [num_gts, ]
             gt_bboxs = np.asarray(gt_bboxs)
+            gt_bboxs = self._proc_gt_bboxs(gt_bboxs)
             num_gts = len(gt_bodys)
             if num_gts == 0:
                 continue
@@ -391,14 +407,14 @@ class JointDataset(CustomDataset):
             scale_dict['cx'] = gt_bodys[0, 0, 9]
             scale_dict['cy'] = gt_bodys[0, 0, 10]
             # 获取与gt数目相等的preds
-            pred_indexs = self._get_pred_indexs()
+            # FIXME 利用iou去取bbox与利用置信度去取bbox存在差别：
+            pred_indexs = self._get_pred_indexs(gt_bboxs, bboxes)
             pred_indexs = np.asarray(pred_indexs)
-            assert len(pred_indexs) == len(num_gts), \
+            assert len(pred_indexs) == len(gt_bboxs), \
                 f"error. Unequal length."
-            pred_bboxes, pred_scores = bboxes[pred_indexs][:4], bboxes[pred_indexs][4]  # [num_gts, 4], [num_gts, 1]
+            pred_bboxes, pred_scores = bboxes[pred_indexs][:, :4], bboxes[pred_indexs][:, 4][:, None]  # [num_gts, 4], [num_gts, 1]
             pred_kpts = kpts[pred_indexs]  # [num_gts, 15, 2]
             pred_depths = depths[pred_indexs]  # [num_gts, 16]
-            
             pred_bodys_2d, pred_rdepths = self._proc_2d(pred_kpts, pred_depths, pred_scores, scale_dict)  
             # pred_bodys_2d: (x, y, relative depth, scores), pred_rdepths: (absolute depth) 骨盆点的绝对深度
             pred_bodys_3d = self._proc_3d(pred_bodys_2d, pred_rdepths, scale_dict)  # (X, Y, absolute depth, scores)
@@ -410,9 +426,9 @@ class JointDataset(CustomDataset):
             pair['gt_3d'] = gt_bodys[:, :, 4:].tolist()
             pair['gt_2d'] = gt_bodys[:, :, :4].tolist()
 
-            result['3d_pairs'].append(pair)
+            output['3d_pairs'].append(pair)
 
-        return results
+        return output
         
     def __repr__(self):
         dataset_type = 'Test' if self.test_mode else 'Train'

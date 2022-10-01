@@ -9,6 +9,8 @@ ann_coco_path = '/home/notebook/code/personal/S9043252/wz/dataset_anno//coco_key
 ann_muco_path = '/home/notebook/code/personal/S9043252/wz/dataset_anno/MuCo.json'
 ann_mupots3d_path = "/home/notebook/code/personal/S9043252/wz/dataset_anno/MuPoTS.json"
 
+test_data_mupots3d_root = "/home/notebook/code/personal/S9043252/wz/data/MuPoTs/"
+test_ann_mupots3d_path = "/home/notebook/code/personal/S9043252/wz/dataset_anno/MuPoTs_test.json"
 # data_coco_root = "/data/coco/"
 # data_muco_root = "/data/MuCo/"
 # ann_file_path = '/data/MuCo/annotations/MuCo.json'
@@ -117,7 +119,6 @@ train_pipeline = [
             keys=['img', 'gt_bboxes', 'gt_labels', 'gt_keypoints', 'gt_areas', 'dataset']),
 ]
 
-# 尚未修改
 test_pipeline = [
     dict(type='opera.LoadImgFromFile'),
     dict(
@@ -156,13 +157,14 @@ test_pipeline = [
 #     )
 # )
 
+# # 使用MuPoTs数据集进行eval
 data = dict(
     samples_per_gpu=2,
     workers_per_gpu=1,
     train=dict(
         type=dataset_type,
-        ann_file=ann_muco_path,
-        img_prefix=data_muco_root,
+        ann_file=[],
+        img_prefix=[],
         pipeline=train_pipeline
     ),
     val=dict(
@@ -179,13 +181,13 @@ data = dict(
     )
 )
 
+# train config:
 # data = dict(
 #     samples_per_gpu=2,
 #     workers_per_gpu=2,
 #     train=dict(
 #         type=dataset_type,
-#         ann_file=['/home/notebook/code/personal/S9043252/wz/dataset_anno//coco_keypoints_train2017.json',
-#                     '/home/notebook/code/personal/S9043252/wz/dataset_anno//MuCo.json'],
+#         ann_file=[ann_coco_path, ann_muco_path],
 #         img_prefix=[data_coco_root, data_muco_root],
 #         pipeline=train_pipeline
 #     ),

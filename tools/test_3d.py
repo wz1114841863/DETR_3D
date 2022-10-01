@@ -279,7 +279,6 @@ def main():
             or cfg.evaluation.get('gpu_collect', False))
 
     rank, _ = get_dist_info()
-    import pdb;pdb.set_trace()
     if rank == 0:
         if args.out:
             print(f'\nwriting results to {args.out}')
@@ -299,9 +298,10 @@ def main():
                 eval_kwargs.pop(key, None)
             eval_kwargs.update(dict(metric=args.eval, **kwargs))
             result_json = dataset.evaluate(outputs, anno_path=args.MuPoTs_json_path, **eval_kwargs)
-            file_path = ""
+            file_path = "/home/notebook/code/personal/S9043252/wz/PETR_3D/work_dirs/3d_0930_train_result/output.json"
             with open(file_path, 'w+') as fp:
                 json.dump(result_json, fp, indent=4)
+            print(f"eval 结束，文件写入至：{file_path}")
 
 if __name__ == '__main__':
     main()

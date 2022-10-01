@@ -1,6 +1,6 @@
 # dataset settings
 dataset_type = 'opera.CocoPoseDataset'
-data_root = '/data/jupyter/PETR/test_imgs/'
+data_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/coco2017/'
 # data_root = '/data/coco/'
 
 img_norm_cfg = dict(

@@ -1136,7 +1136,7 @@ class PETRHead3D(AnchorFreeHead):
                 p^{K}_v] format.
         """
         cls_scores = all_cls_scores[-1]  # [1, 300, 1]
-        kpt_preds = all_kpt_preds[-1]  # [1, 300, 34]
+        kpt_preds = all_kpt_preds[-1]  # [1, 300, 30]
         depth_preds = all_depth_preds[-1]  # [1, 300, 16]
 
         result_list = []
@@ -1196,10 +1196,10 @@ class PETRHead3D(AnchorFreeHead):
         if self.loss_cls.use_sigmoid:
             cls_score = cls_score.sigmoid()  # (300, 1)
             scores, indexs = cls_score.view(-1).topk(max_per_img)  # 100
-            det_labels = indexs % self.num_classes  # ???
+            det_labels = indexs % self.num_classes  # 0
             bbox_index = indexs // self.num_classes  # 100
-            kpt_pred = kpt_pred[bbox_index]  # (100, 34)
-            depth_pred = depth_pred[bbox_index]
+            kpt_pred = kpt_pred[bbox_index]  # (100, 30)
+            depth_pred = depth_pred[bbox_index]  # [100, 16]
         else:
             scores, det_labels = F.softmax(cls_score, dim=-1)[..., :-1].max(-1)
             scores, bbox_index = scores.topk(max_per_img)
@@ -1218,15 +1218,15 @@ class PETRHead3D(AnchorFreeHead):
                                                 refine_targets, None, None)
         # end = time.time()
         # print(f'refine time: {end - start:.6f}')
-        det_kpts = refine_outputs[-1]  # [100, 17, 2]
-        # img_shape: (1241, 800, 3)
+        det_kpts = refine_outputs[-1]  # [100, 15, 2]
+        # img_shape: (1241, 800, 3), 坐标从百分比 转换为 像素坐标
         det_kpts[..., 0] = det_kpts[..., 0] * img_shape[1]  # [100, 17]
         det_kpts[..., 1] = det_kpts[..., 1] * img_shape[0]  # [100, 17]
         det_kpts[..., 0].clamp_(min=0, max=img_shape[1])
         det_kpts[..., 1].clamp_(min=0, max=img_shape[0])
-        if rescale:
+        if rescale:  # 回归到原图的坐标
             det_kpts /= det_kpts.new_tensor(
-                scale_factor[:2]).unsqueeze(0).unsqueeze(0)  # [100, 17, 2] / [1, 1, 2]
+                scale_factor[:2]).unsqueeze(0).unsqueeze(0)  # [100, 15, 2] / [1, 1, 2]
 
         # use circumscribed rectangle box of keypoints as det bboxes
         x1 = det_kpts[..., 0].min(dim=1, keepdim=True)[0]
@@ -1236,10 +1236,11 @@ class PETRHead3D(AnchorFreeHead):
         det_bboxes = torch.cat([x1, y1, x2, y2], dim=1)  # [100, 4]
         det_bboxes = torch.cat((det_bboxes, scores.unsqueeze(1)), -1)  # [100, 5]
 
-        det_kpts = torch.cat(  # [100, 17, 3]
-            (det_kpts, det_kpts.new_ones(det_kpts[..., :1].shape)), dim=2)
+        # 这里不再添加vis 标志位。
+        # det_kpts = torch.cat(  # [100, 15, 3]
+        #     (det_kpts, det_kpts.new_ones(det_kpts[..., :1].shape)), dim=2)
         
-        det_depths = depth_pred
+        det_depths = depth_pred  # [100, 16]
 
         return det_bboxes, det_labels, det_kpts, det_depths
     
@@ -1262,7 +1263,6 @@ class PETRHead3D(AnchorFreeHead):
                 (n, K, 3), in [p^{1}_x, p^{1}_y, p^{1}_v, p^{K}_x, p^{K}_y,
                 p^{K}_v] format.
         """
-        import pdb;pdb.set_trace()
         # forward of this head requires img_metas
         outs = self.forward(feats, img_metas)
         results_list = self.get_bboxes(*outs, img_metas, rescale=rescale)
