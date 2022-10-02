@@ -1,6 +1,7 @@
 # dataset settings
 dataset_type = 'opera.CocoPoseDataset'
-data_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/coco2017/'
+# data_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/coco2017/'
+data_root = '/home/notebook/code/personal/S9043252/wz/data/wz_coco/'
 # data_root = '/data/coco/'
 
 img_norm_cfg = dict(
@@ -100,12 +101,12 @@ data = dict(
     val=dict(
         type=dataset_type,
         ann_file=data_root + 'annotations/person_keypoints_val2017.json',
-        img_prefix=data_root + 'images/val2017/',
+        img_prefix=data_root + '/val2017/',
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
         ann_file=data_root + 'annotations/person_keypoints_val2017.json',
-        img_prefix=data_root + 'images/val2017/',
+        img_prefix=data_root + '/val2017/',
         pipeline=test_pipeline))
 
 evaluation = dict(interval=1, metric='keypoints')

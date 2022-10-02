@@ -223,6 +223,33 @@ class CocoPoseDataset(CocoDataset):
             raise TypeError('invalid type of results')
         return result_files
 
+    # def evaluate_3d(self, results, **kwargs):
+    #     """
+    #         由于3d和2d的输出结果不一致, 这里去掉输出的深度等信息, 再调用evaluate函数
+    #         预测的关键点个数不一致，无法使用coco eval，废弃
+    #     """
+    #     outputs = []
+    #     for i in range(len(results)):
+    #         result = results[i]
+    #         output = []
+    #         pred_bboxs = []
+    #         pred_kpts = []
+    #         # 取出result中对应数据
+    #         bboxs, kpts, depths= result[0][0], result[1][0], result[2][0]
+    #         # kpt 需要添加一个维度
+    #         bboxs = np.array(bboxs)
+    #         kpts = np.array(kpts)
+    #         vis_flag = np.ones((kpts.shape[0], kpts.shape[1], 1))
+    #         kpts = np.concatenate((kpts, vis_flag), axis=-1)
+    #         # 注意嵌套关系
+    #         pred_bboxs.append(bboxs)
+    #         pred_kpts.append(kpts)
+    #         output.append(pred_bboxs)
+    #         output.append(pred_kpts)
+    #         outputs.append(output)
+
+    #     return self.evaluate(outputs, **kwargs)
+
     def evaluate(self,
                     results,
                     metric='keypoints',

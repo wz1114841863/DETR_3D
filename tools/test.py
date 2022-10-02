@@ -271,7 +271,7 @@ def main():
             or cfg.evaluation.get('gpu_collect', False))
 
     rank, _ = get_dist_info()
-    import pdb;pdb.set_trace()
+
     if rank == 0:
         if args.out:
             print(f'\nwriting results to {args.out}')
@@ -288,6 +288,7 @@ def main():
             ]:
                 eval_kwargs.pop(key, None)
             eval_kwargs.update(dict(metric=args.eval, **kwargs))
+
             metric = dataset.evaluate(outputs, **eval_kwargs)
             print(metric)
             metric_dict = dict(config=args.config, metric=metric)

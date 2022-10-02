@@ -5,7 +5,7 @@ from mmdet.datasets import CustomDataset
 import mmcv
 import numpy as np
 import json
-
+import scipy.io as scio
 
 from .builder import DATASETS
 
@@ -204,12 +204,14 @@ class JointDataset(CustomDataset):
 
     def _get_pred_indexs(self, gt_bboxs, pred_bboxs):
         """根据iou来计算与gt最为匹配的输出
-        可能存在问题：bbox重叠之类的影响
+        可能存在问题: 
+            bbox重叠之类的影响
+            不存在匹配的bbox
         Args:
             gt_bboxs (numpy.array): 
                 gt bboxs, [num_gts, 4]
                 [top_left_x, top_left_y, weight, height]
-            pred_bboxes (_type_): 
+            pred_bboxes (numpy.array): 
                 pred bboxs, [num_preds, 5]
                 [top_left_x, top_left_y, bottom_right_x, bottom_right_y, scores]
         """
@@ -231,7 +233,7 @@ class JointDataset(CustomDataset):
             
         return pred_indexs
 
-    def _proc_gt(self, gt_bodys):
+    def _proc_gt_bodys(self, gt_bodys):
         """添加中心点
 
         Args:
@@ -245,7 +247,7 @@ class JointDataset(CustomDataset):
             new_gt_bodys[i][:15, :] = gt_bodys[i][:, :]
             valid_index = gt_bodys[i][:, 3] > 0
             if valid_index.sum() != 0:
-                tmp = gt_bodys[i][valid_index]
+                tmp = gt_bodys[i][valid_index]  # [valid_index.sum(), 11]
                 new_gt_bodys[i][15] = np.sum(tmp, 0) / valid_index.sum()
         
         return new_gt_bodys 
@@ -253,6 +255,7 @@ class JointDataset(CustomDataset):
     def _proc_gt_bboxs(self, gt_bboxs):
         """
             处理gt bboxs 的格式
+            从[x, y, w, h] -> [x1, y1, x2, y2]
         """
         gt_bboxs[:, 2] += gt_bboxs[:, 0]
         gt_bboxs[:, 3] += gt_bboxs[:, 1]
@@ -263,10 +266,10 @@ class JointDataset(CustomDataset):
         """生成2d坐标和相对于骨盆点的深度
 
         Args:
-            pred_kpts (_type_): _description_
-            pred_depths (_type_): _description_
-            pred_scores (_type_): _description_
-            scale_dict (_type_): _description_
+            pred_kpts (numpy.ndarray): [num_gts, 15, 2]
+            pred_depths (numpy.ndarray): [num_gts, 16]
+            pred_scores (numpy.ndarray): [num_gts, 1]
+            scale_dict (dict): scale
         """
         assert len(pred_kpts) == len(pred_depths), \
             f"关键点长度与depth长度不同"
@@ -276,7 +279,7 @@ class JointDataset(CustomDataset):
         num_gts = len(pred_depths)
         root_idx = 2  # 骨盆点
         pred_bodys_2d = np.zeros((num_gts, 15, 4))
-        pred_rdepths = np.zeros((num_gts, ))
+        pred_rdepths = np.zeros((num_gts, ))  # (骨盆点深度, )
         for i in range(num_gts):
             center_abs_depth = pred_depths[i][0]
             kpt_abs_depth = pred_depths[i][1:] + pred_depths[i][0]
@@ -304,6 +307,11 @@ class JointDataset(CustomDataset):
         P3D.x = (x_2d - cx_d) * depth(x_2d,y_2d) / fx_d
         P3D.y = (y_2d - cy_d) * depth(x_2d,y_2d) / fy_d
         P3D.z = depth(x_2d,y_2d)
+
+        已验证, 与下列方式计算结果相同:
+            iK = np.linalg.inv(K)
+            tmp2d = np.array(x[i][0], x[i][1], 1]).reshape([3,1])
+            (d * iK @ tmp2d)
         """
         X = np.zeros((len(d), 3), np.float)
         X[:, 0] = (x[:, 0] - K[0, 2]) * d / K[0, 0]
@@ -323,9 +331,9 @@ class JointDataset(CustomDataset):
         """求相对深度和
 
         Args:
-            pred_bodys_2d (_type_): _description_
-            pred_scores (_type_): _description_
-            scale_dict (_type_): _description_
+            pred_bodys_2d (numpy.ndarray): [num_gts, 15, 4]
+            pred_scores (numpy.ndarray): _description_
+            scale (dict): scale
         """
         coords_2d = pred_bodys_2d.copy()
         root_depth = pred_rdepths.copy()
@@ -334,51 +342,41 @@ class JointDataset(CustomDataset):
         pred_bodys_3d = self._get_3d_points(coords_2d, root_depth, K)
         return pred_bodys_3d
         
-    def evaluate(self,
-                    results,
-                    anno_path,
-                    metric='keypoints',
-                    logger=None,
-                    jsonfile_prefix=None,
-                    classwise=False,
-                    proposal_nums=(100, 300, 1000),
-                    iou_thrs=None,
-                    metric_items=None):
+    def evaluate(self, 
+                results, 
+                output_save_path,
+                mat_save_path,
+                save_json=True,
+                save_mat=True,):
         """生成用于进行eval的json文件, 参考SMAP。
 
         Args:
             results (_type_): 网络输出结果
-            anno_path: MuPoTs.json文件存放位置
-            metric (str, optional): _description_. Defaults to 'keypoints'.
-            logger (_type_, optional): _description_. Defaults to None.
-            jsonfile_prefix (_type_, optional): _description_. Defaults to None.
-            classwise (bool, optional): _description_. Defaults to False.
-            proposal_nums (tuple, optional): _description_. Defaults to (100, 300, 1000).
-            iou_thrs (_type_, optional): _description_. Defaults to None.
-            metric_items (_type_, optional): _description_. Defaults to None.
+            output_save_path: json保存路径
+            mat_save_path:  mat保存路径
+            save_json: 是否保存json
+            save_mat: 是否保存mat
+
+            3d_pairs has items like{'pred_2d':[[x,y,detZ,score]...], 
+                                    'gt_2d':[[x,y,Z,visual_type]...],
+                                    'pred_3d':[[X,Y,Z,score]...], 
+                                    'gt_3d':[[X,Y,Z]...],
+                                    'root_d': (abs depth of root (float value) pred by network),
+                                    'image_path': relative image path}
         """
-        # 读取json文件
-        # with open(anno_path, 'w') as fp:
-        #     annos = json.load(fp)['root']
-        # annos = self.data_infos
-        assert len(self.data_infos) == len(results), f"len(anno) != len(results), {len(anno)}"
+        assert len(self.data_infos) == len(results), \
+            f"len(anno) != len(results), length of anno is {len(anno)}"
         output = dict()
         output['model_pattern'] = self.__class__.__name__
         output['3d_pairs'] = []
-        # 3d_pairs has items like{'pred_2d':[[x,y,detZ,score]...], 'gt_2d':[[x,y,Z,visual_type]...],
-        #                        'pred_3d':[[X,Y,Z,score]...], 'gt_3d':[[X,Y,Z]...],
-        #                        'root_d': (abs depth of root (float value) pred by network),
-        #                        'image_path': relative image path}
-        num_keypoints = 15
         # TODO 查看eval时是否看顺序读取数据集，否则下面代码逻辑错误
-        
         for i in range(len(results)):
             anno = self.data_infos[i]
             result = results[i]
             # 取出result中对应数据
-            bboxes, kpts, depths= result[0][0], result[1][0], result[2][0]
-            assert bboxes.shape == (100, 5), \
-                f"error. bboxes.shape:{bboxes.shape}"
+            bboxs, kpts, depths= result[0][0], result[1][0], result[2][0]
+            assert bboxs.shape == (100, 5), \
+                f"error. bboxs.shape:{bboxs.shape}"
             assert kpts.shape == (100, 15, 2), \
                 f"error. kpts.shape:{kpts.shape}"
             assert depths.shape == (100, 16), \
@@ -386,21 +384,27 @@ class JointDataset(CustomDataset):
             # gt 处理
             gt_bodys = []
             gt_bboxs = []
-            anno_bodys = np.asarray(anno['bodys'])
+            anno_bodys = np.array(anno['bodys'])
             for j in range(len(anno_bodys)):
                 valid_num = anno_bodys[j][:, 3] > 0  # [15, ]
                 if valid_num.sum() > 0:
                     gt_bodys.append(anno['bodys'][j])
                     gt_bboxs.append(anno['bboxs'][j])
-            gt_bodys = np.asarray(gt_bodys)  # [num_gts, 15, 11]
-            gt_bodys = self._proc_gt(gt_bodys)  # [num_gts, 16, 11]
-            assert gt_bodys.shape[-2:] == (16, 11) , f"bodys.shape: {gt_bodys.shape}"
-            gt_bboxs = np.asarray(gt_bboxs)
+                else:
+                    print(f"{anno['img_paths']} 中包含有无效bbox和body")
+            
+            gt_bodys = np.array(gt_bodys)  # [num_gts, 15, 11]
+            gt_bodys = self._proc_gt_bodys(gt_bodys)  # [num_gts, 16, 11]
+            assert gt_bodys.shape[-2:] == (16, 11) , f"gt_bodys.shape: {gt_bodys.shape}"
+            gt_bboxs = np.array(gt_bboxs)
             gt_bboxs = self._proc_gt_bboxs(gt_bboxs)
-            assert gt_bboxs.shape[-1] == 4, f"bboxs.shape: {gt_bboxs.shape}"
-            num_gts = len(gt_bodys)
+            assert gt_bboxs.shape[-1] == 4, f"gt_bboxs.shape: {gt_bboxs.shape}"
+
+            num_gts = len(gt_bboxs)
             if num_gts == 0:
+                print(f"{anno['img_paths']} 中gt个数为0")
                 continue
+
             scale_dict = dict()
             scale_dict['img_w'] = anno['img_width']
             scale_dict['img_h'] = anno['img_height']
@@ -409,21 +413,23 @@ class JointDataset(CustomDataset):
             scale_dict['cx'] = gt_bodys[0, 0, 9]
             scale_dict['cy'] = gt_bodys[0, 0, 10]
             # 获取与gt数目相等的preds
-            # FIXME 利用iou去取bbox与利用置信度去取bbox存在差别：
-            pred_indexs = self._get_pred_indexs(gt_bboxs, bboxes)
-            pred_indexs = np.asarray(pred_indexs)
+            # FIXME 两种方法：
+            # 利用 iou 与 利用置信度 存在差别
+            pred_indexs = self._get_pred_indexs(gt_bboxs, bboxs)
+            pred_indexs = np.array(pred_indexs)
             assert len(pred_indexs) == len(gt_bboxs), \
                 f"error. Unequal length."
-            pred_bboxes, pred_scores = bboxes[pred_indexs][:, :4], bboxes[pred_indexs][:, 4][:, None]  # [num_gts, 4], [num_gts, 1]
+            pred_bboxes, pred_scores = bboxs[pred_indexs][:, :4], bboxs[pred_indexs][:, 4][:, None]  # [num_gts, 4], [num_gts, 1]
             pred_kpts = kpts[pred_indexs]  # [num_gts, 15, 2]
             pred_depths = depths[pred_indexs]  # [num_gts, 16]
+            # 对2d坐标和3d坐标进行处理
             pred_bodys_2d, pred_rdepths = self._proc_2d(pred_kpts, pred_depths, pred_scores, scale_dict)  
             # pred_bodys_2d: (x, y, relative depth, scores), pred_rdepths: (absolute depth) 骨盆点的绝对深度
             pred_bodys_3d = self._proc_3d(pred_bodys_2d, pred_rdepths, scale_dict)  # (X, Y, absolute depth, scores)
             # 检验长度
             assert len(gt_bodys) == num_gts
-            assert pred_bodys_2d.shape[0] == num_gts and pred_bodys_2d.shape[-2:] == (15, 4)
-            assert pred_bodys_3d.shape[0] == num_gts and pred_bodys_2d.shape[-2:] == (15, 4)
+            assert pred_bodys_2d.shape == (num_gts, 15, 4)
+            assert pred_bodys_3d.shape == (num_gts, 15, 4)
             assert pred_rdepths.shape[0] == num_gts
 
             pair = dict()
@@ -436,8 +442,45 @@ class JointDataset(CustomDataset):
 
             output['3d_pairs'].append(pair)
 
-        return output
-        
+        if save_json:
+            file_path = output_save_path + 'output.json'
+            with open(file_path, 'w+') as fp:
+                json.dump(output, fp, indent=4)
+            print(f"output结果写入至: {file_path}")
+
+        if save_mat:
+            self._save_result_to_mat(output, mat_save_path)
+        return
+    
+    def _save_result_to_mat(self, output, mat_save_path):
+        """
+            将eval的结果存储为mat格式进行保存
+        """
+        pairs_3d = output['3d_pairs']
+
+        pose3d = dict()
+        pose2d = dict()
+
+        for i in range(len(pairs_3d)):
+            img_path = pairs_3d[i]['image_path']
+            idx = img_path.index('TS')
+            name = img_path[idx:]
+            pred_3ds = np.array(pairs_3d[i]['pred_3d'])  # [num_gt, 15, 4] 
+            pred_2ds = np.array(pairs_3d[i]['pred_2d'])  # [num_gts, 15, 4]
+            pose3d[name] = pred_3ds * 10 # nH x 15 x 4 
+            pose3d[name][:, :, 3] /= 10
+            pose2d[name] = pred_2ds # nH x 15 x 4
+
+        # 保存结果
+        # pose3d_save_path = mat_save_path + 'pose3d.mat'
+        # pose2d_save_path = mat_save_path + 'pose2d.mat'
+        pose3d_save_path = './pose3d.mat'
+        pose2d_save_path = './pose2d.mat'
+        scio.savemat(pose3d_save_path, {'preds_3d_kpt':pose3d})
+        scio.savemat(pose2d_save_path, {'preds_2d_kpt':pose2d})
+        print(f"pose3d mat 数据保存至: {pose3d_save_path}")
+        print(f"pose2d mat 数据保存至: {pose2d_save_path}")
+
     def __repr__(self):
         dataset_type = 'Test' if self.test_mode else 'Train'
         result = (f'\n{self.__class__.__name__} {dataset_type} dataset '

@@ -1,5 +1,6 @@
 # 忽略的文件
 Mupots
+tmp_folder
 results
 work_dirs
 **/.ipynb_checkpoints
