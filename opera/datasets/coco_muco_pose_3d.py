@@ -6,6 +6,7 @@ import mmcv
 import numpy as np
 import json
 import scipy.io as scio
+from scipy.optimize import linear_sum_assignment
 
 from .builder import DATASETS
 
@@ -194,7 +195,7 @@ class JointDataset(CustomDataset):
         # 计算交集面积
         inter_area = np.max([0, xmax - xmin]) * np.max([0, ymax - ymin])  # 可能没有交集，此时面积为0
         if inter_area == 0:
-            return None, None
+            return None, 0
         # 计算iou
         # A = area(bbox1), B = area(bbox2), C = （area(bbox1) ∩ area(bbox2）
         # iou = C / (A + B - C)
@@ -202,7 +203,7 @@ class JointDataset(CustomDataset):
 
         return inter_bbox, iou
 
-    def _get_pred_indexs(self, gt_bboxs, pred_bboxs):
+    def _get_pred_indexs_by_iou(self, gt_bboxs, pred_bboxs):
         """根据iou来计算与gt最为匹配的输出
         可能存在问题: 
             bbox重叠之类的影响
@@ -221,17 +222,38 @@ class JointDataset(CustomDataset):
             iou = 0.
             for j in range(len(pred_bboxs)):
                 _, iou_tmp = self._calc_iou(gt_bboxs[i], pred_bboxs[j][:4])
-                if (iou_tmp != None and iou_tmp > iou and j not in pred_indexs):
+                if (iou_tmp != 0 and iou_tmp > iou and j not in pred_indexs):
                     iou = iou_tmp
                     index = j
             if index == -1:
                 # TODO bug 待修复
-                print(f"index == -1")
+                # print(f"index == -1")
                 index = 0
             # assert index != -1, f"没有一个bbox与之匹配"
             pred_indexs.append(index)
             
         return pred_indexs
+
+    def _get_pred_indexs_by_scores(self, gt_bboxs, pred_bboxs):
+        """
+        首先选取置信度最高的前num_gts个, 然后根据iou进行匹配   
+        前提是返回的置信度需要从高到底排列    
+        """
+        num_gts = len(gt_bboxs)
+        # 选取前num_gts个
+        pred_bboxs_tmp = pred_bboxs[:num_gts, :4].copy()
+        # 进行iou匹配
+        iou_matrix = np.zeros((num_gts, num_gts))
+        for i in range(num_gts):
+            for j in range(num_gts):
+                _, iou_tmp = self._calc_iou(gt_bboxs[i], pred_bboxs_tmp[j])
+                assert iou_tmp <= 1 and iou_tmp >= 0, \
+                    f"iou 应该在0-1范围内"
+                iou_matrix[i][j] = iou_tmp
+
+        not_iou_matrix = 1 - iou_matrix
+        matched_row_inds, matched_col_inds = linear_sum_assignment(not_iou_matrix)
+        return matched_col_inds
 
     def _proc_gt_bodys(self, gt_bodys):
         """添加中心点
@@ -415,7 +437,7 @@ class JointDataset(CustomDataset):
             # 获取与gt数目相等的preds
             # FIXME 两种方法：
             # 利用 iou 与 利用置信度 存在差别
-            pred_indexs = self._get_pred_indexs(gt_bboxs, bboxs)
+            pred_indexs = self._get_pred_indexs_by_scores(gt_bboxs, bboxs)
             pred_indexs = np.array(pred_indexs)
             assert len(pred_indexs) == len(gt_bboxs), \
                 f"error. Unequal length."
