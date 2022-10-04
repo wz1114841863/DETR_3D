@@ -157,7 +157,31 @@ test_pipeline = [
 #     )
 # )
 
-# # 使用MuPoTs数据集进行eval
+# # 使用test_MuPoTs数据集进行eval
+# data = dict(
+#     samples_per_gpu=2,
+#     workers_per_gpu=1,
+#     train=dict(
+#         type=dataset_type,
+#         ann_file=[],
+#         img_prefix=[],
+#         pipeline=train_pipeline
+#     ),
+#     val=dict(
+#         type=dataset_type,
+#         ann_file=test_ann_mupots3d_path,
+#         img_prefix=test_data_mupots3d_root,
+#         pipeline=test_pipeline
+#     ),
+#     test=dict(
+#         type=dataset_type,
+#         ann_file=test_ann_mupots3d_path,
+#         img_prefix=test_data_mupots3d_root,
+#         pipeline=test_pipeline,
+#     )
+# )
+
+# 使用MuPoTs数据集进行eval
 data = dict(
     samples_per_gpu=2,
     workers_per_gpu=1,

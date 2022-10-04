@@ -154,7 +154,7 @@ def bbox_kpt2result(bboxes, labels, kpts, num_classes):
             [kpts[labels == i, :, :] for i in range(num_classes)]
 
 
-def bbox_kpt2result_3d(bboxes, labels, kpts, depths, num_classes):
+def bbox_kpt2result_3d(bboxes, labels, kpts, depths, scale_factor, num_classes):
     """Convert detection results to a list of numpy arrays.
 
     Args:
@@ -181,7 +181,8 @@ def bbox_kpt2result_3d(bboxes, labels, kpts, depths, num_classes):
             
         return [bboxes[labels == i, :] for i in range(num_classes)], \
             [kpts[labels == i, :, :] for i in range(num_classes)], \
-            [depths[labels == i, :] for i in range(num_classes)]
+            [depths[labels == i, :] for i in range(num_classes)], \
+            [scale_factor]
 
 def kpt_flip(kpts, img_shape, flip_pairs, direction):
     """Flip keypoints horizontally.
