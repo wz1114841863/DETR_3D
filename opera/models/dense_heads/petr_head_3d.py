@@ -329,8 +329,8 @@ class PETRHead3D(AnchorFreeHead):
         hs = hs.permute(0, 2, 1, 3)  # (3, bs, 300, 256)
         enc_outputs_kpt = enc_outputs_kpt.sigmoid()  # inf -> 1.0 防止损失变为nan
         outputs_classes = []  # len = 3, (bs, 300, 1)
-        outputs_kpts = []  # len = 3, (bs, 300, 46)
-        outputs_depths = []  # len = 3
+        outputs_kpts = []  # len = 3, (bs, 300, 30)
+        outputs_depths = []  # len = 3, (bs, 300, 16)
         
         for lvl in range(hs.shape[0]):  # 3
             if lvl == 0:
@@ -988,8 +988,8 @@ class PETRHead3D(AnchorFreeHead):
             refer_point_weights = torch.ones((num_gts, 1)).cuda()  # [num_gts, 1]
             depth_weights[pos_inds] = torch.cat((refer_point_weights, valid_idx.int()), -1)  # [num_gts, 1 + 15]
             # 这里直接对gt_targets进行变换，之后计算loss时就不用再针对进行变换, 但是需要考虑preds中绝对深度与相对深度
-            # FIXME, 是否除数为零
             kpt_gt_depth = torch.zeros((num_gts, 15), dtype=torch.float32).cuda()
+            # FIXME 这里的图片宽度应该是变换后的图片深度还是变换前的图片深度, 进一步考虑
             kpt_gt_depth[valid_idx] = gt_keypoints_tmp[valid_idx][..., 6] * img_w / \
                 gt_keypoints_tmp[valid_idx][..., 7]  # [num_gts, 15]
             kpt_center_depth = torch.sum(kpt_gt_depth, -1) / torch.sum(valid_idx.int(), -1)  # [num_gts, ]

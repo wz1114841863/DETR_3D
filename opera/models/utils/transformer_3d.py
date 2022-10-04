@@ -272,7 +272,7 @@ class PetrTransformerDecoder3D(TransformerLayerSequence):
                 if reference_points.shape[-1] == self.num_keypoints * 2:
                     new_reference_points = tmp + inverse_sigmoid(
                         reference_points)  # Pose Decoder 中公式一
-                    new_reference_points = new_reference_points.sigmoid()  # [1, 300, 34]
+                    new_reference_points = new_reference_points.sigmoid()  # [bs, 300, 34]
                     reference_points = new_reference_points.detach()
                 else:
                     raise NotImplementedError
@@ -285,7 +285,7 @@ class PetrTransformerDecoder3D(TransformerLayerSequence):
                 else:
                     raise NotImplementedError
             
-            output = output.permute(1, 0, 2)  # [300, 1, 256]
+            output = output.permute(1, 0, 2)  # [300, bs, 256]
             
             if self.return_intermediate:
                 intermediate.append(output)
@@ -654,7 +654,7 @@ class PETRTransformer3D(Transformer):
             output_memory, output_proposals = \
                 self.gen_encoder_output_proposals(
                     memory, mask_flatten, spatial_shapes)
-            # output_memory: [bs, sum(h*w), 256], output_proposals: [bs, sum(h*w), 3]
+            # output_memory: [bs, sum(h*w), 256], output_proposals: [bs, sum(h*w), 2]
             enc_outputs_class = cls_branches[self.decoder.num_layers](
                 output_memory)  # [bs, sum(h*w), 1]
             enc_outputs_kpt_unact = \
@@ -721,7 +721,6 @@ class PETRTransformer3D(Transformer):
             depth_branches=depth_branches,
             **kwargs)
 
-        # TODO 修改返回值和返回顺序
         if self.as_two_stage:
             return inter_states, inter_references, inter_depths, \
                 init_reference_out, init_depth_out, \
