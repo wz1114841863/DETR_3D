@@ -167,7 +167,7 @@ class DepthL1Cost(object):
         self.refer_depth_weight = refer_depth_weight
         
     def __call__(self, refer_point_depth, kpt_abs_depth, 
-            gt_keypoints_depth, valid_kpt_flag, img_shape):
+            gt_keypoints_depth, valid_kpt_flag, scale):
         """求深度损失 及其所占比例
 
         Args:
@@ -175,9 +175,9 @@ class DepthL1Cost(object):
             kpt_abs_depth (Tensor): 预测的关键点的绝对深度  # [300, 15]
             gt_keypoints_depth (Tensor): gt_keypoints_depth [N, 15, 5], [Z, fx, fy, cx, cy]
             valid_kpt_flag (_type_): 有效的关键点标志位， vis, [N, 15, 1]
-            img_shape: [h, w]
+            scale: w_scale, h_scale, w_scale, h_scale]
         """
-        _, w, _ = img_shape
+        scale_w = scale[0]
         kpt_depth_cost = []
         refer_depth_cost= []
         for i in range(len(gt_keypoints_depth)):
@@ -196,12 +196,12 @@ class DepthL1Cost(object):
                 len_valid  # 有效的fx / 有效的关键点个数
             assert gt_aver_f != 0, f"有效的关键点个数为零"
             # gt_aver_f = gt_aver_f if gt_aver_f > 0 else 1
-            gt_aver_real_depth = gt_aver_depth * w / gt_aver_f
+            gt_aver_real_depth = gt_aver_depth / scale_w / gt_aver_f
             refer_cost = torch.abs(refer_depth_tmp - gt_aver_real_depth)  # [300, 1]
             # 计算关键点深度损失
             # gt_depth = torch.zeros_like(gt_keypoints_depth[i][..., 0])
             gt_depth = torch.zeros((15, )).cuda()
-            gt_depth[valid_flag] = gt_keypoints_depth[i][valid_flag][..., 0] * w / \
+            gt_depth[valid_flag] = gt_keypoints_depth[i][valid_flag][..., 0] / scale_w / \
                 gt_keypoints_depth[i][valid_flag][..., 1]  # Z * w / fx, [15, ]
             kpt_cost = torch.cdist(
                 kpt_depth_tmp,

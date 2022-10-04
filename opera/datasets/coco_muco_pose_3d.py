@@ -306,7 +306,8 @@ class JointDataset(CustomDataset):
             center_abs_depth = pred_depths[i][0]
             kpt_abs_depth = pred_depths[i][1:] + pred_depths[i][0]
             # 根据smap公式计算Z
-            kpt_abs_depth = kpt_abs_depth * scale_dict['f_x'] / scale_dict['img_w']
+            # kpt_abs_depth = kpt_abs_depth * scale_dict['f_x'] / scale_dict['img_w']
+            kpt_abs_depth = kpt_abs_depth * scale_dict['f_x'] * scale_dict['scale_w']
             # 骨盆点深度
             root_abs_depth = kpt_abs_depth[root_idx]
             # 其余点相对于骨盆点的深度
@@ -396,13 +397,16 @@ class JointDataset(CustomDataset):
             anno = self.data_infos[i]
             result = results[i]
             # 取出result中对应数据
-            bboxs, kpts, depths= result[0][0], result[1][0], result[2][0]
+            bboxs, kpts, depths, scale_factor = result[0][0], result[1][0], result[2][0], result[3][0]
             assert bboxs.shape == (100, 5), \
                 f"error. bboxs.shape:{bboxs.shape}"
             assert kpts.shape == (100, 15, 2), \
                 f"error. kpts.shape:{kpts.shape}"
             assert depths.shape == (100, 16), \
-                f"error. depths.shape:{depths.shape}"     
+                f"error. depths.shape:{depths.shape}"
+            assert len(scale_factor) == 4, \
+                f"errot. scale_factor.length:{len(scale_factor)}"
+            
             # gt 处理
             gt_bodys = []
             gt_bboxs = []
@@ -434,6 +438,7 @@ class JointDataset(CustomDataset):
             scale_dict['f_y'] = gt_bodys[0, 0, 8]
             scale_dict['cx'] = gt_bodys[0, 0, 9]
             scale_dict['cy'] = gt_bodys[0, 0, 10]
+            scale_dict['scale_w'] = scale_factor[0]
             # 获取与gt数目相等的preds
             # FIXME 两种方法：
             # 利用 iou 与 利用置信度 存在差别

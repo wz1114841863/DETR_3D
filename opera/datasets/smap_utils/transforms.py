@@ -328,7 +328,20 @@ class AugResize(MMDetResize):
                 keypoints[..., 0] = np.clip(keypoints[..., 0], 0, img_shape[1])
                 keypoints[..., 1] = np.clip(keypoints[..., 1], 0, img_shape[0])
         
-        results[key] = keypoints            
+        results[key] = keypoints
+    
+    def _resize_areas(self, results):
+        """由于img 和 keypoints 全都进行了resize，需要对对应的areas也进行resize
+        分为两种情况：
+            COCO:
+            MUCO:
+        """
+        dataset = results['dataset']
+        if dataset == "COCO":
+            areas = results['gt_areas'].copy()
+            areas = areas * results['scale_factor'][0] \
+                * results['scale_factor'][1]
+            results['gt_areas'] = areas
 
     def __call__(self, results):
         """进行一系列resize操作, img、bbox、keypoints
@@ -358,6 +371,7 @@ class AugResize(MMDetResize):
         self._resize_img(results)
         self._resize_bboxes(results)
         self._resize_keypoints(results)
+        self._resize_areas(results)
         
         return results
 

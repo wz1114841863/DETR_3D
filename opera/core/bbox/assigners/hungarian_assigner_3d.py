@@ -142,7 +142,7 @@ class PoseHungarianAssigner3D(BaseAssigner):
             kpt_abs_depth = kpt_real_depth + refer_point_depth  # [300, 15], keypoints 绝对深度
         
             refer_depth_cost, kpt_depth_cost = self.depth_cost(refer_point_depth, kpt_abs_depth, 
-                gt_keypoints_depth, valid_kpt_flag, img_meta['img_shape'])  # 需要是： [300, num_kpt]
+                gt_keypoints_depth, valid_kpt_flag, img_meta['scale_factor'])  # 需要是： [300, num_kpt]
         else:
             raise NotImplementedError("未知的dataset in hungarisn_assigner.")
         

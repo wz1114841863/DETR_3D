@@ -990,7 +990,10 @@ class PETRHead3D(AnchorFreeHead):
             # 这里直接对gt_targets进行变换，之后计算loss时就不用再针对进行变换, 但是需要考虑preds中绝对深度与相对深度
             kpt_gt_depth = torch.zeros((num_gts, 15), dtype=torch.float32).cuda()
             # FIXME 这里的图片宽度应该是变换后的图片深度还是变换前的图片深度, 进一步考虑
-            kpt_gt_depth[valid_idx] = gt_keypoints_tmp[valid_idx][..., 6] * img_w / \
+            img_scale = img_meta['scale_factor'][0]
+            # kpt_gt_depth[valid_idx] = gt_keypoints_tmp[valid_idx][..., 6] * img_w / \
+            #     gt_keypoints_tmp[valid_idx][..., 7]  # [num_gts, 15]
+            kpt_gt_depth[valid_idx] = gt_keypoints_tmp[valid_idx][..., 6] / img_scale / \
                 gt_keypoints_tmp[valid_idx][..., 7]  # [num_gts, 15]
             kpt_center_depth = torch.sum(kpt_gt_depth, -1) / torch.sum(valid_idx.int(), -1)  # [num_gts, ]
             depth_targets[pos_inds] = torch.cat((kpt_center_depth.unsqueeze(-1), kpt_gt_depth), -1)
@@ -1240,9 +1243,10 @@ class PETRHead3D(AnchorFreeHead):
         # det_kpts = torch.cat(  # [100, 15, 3]
         #     (det_kpts, det_kpts.new_ones(det_kpts[..., :1].shape)), dim=2)
         
+        # 这里的深度是尚未处理的深度 中心点绝对深度 + 关键点相对深度
         det_depths = depth_pred  # [100, 16]
 
-        return det_bboxes, det_labels, det_kpts, det_depths
+        return det_bboxes, det_labels, det_kpts, det_depths, scale_factor
     
     def simple_test_bboxes(self, feats, img_metas, rescale=False):
         """Test det bboxes without test-time augmentation.
