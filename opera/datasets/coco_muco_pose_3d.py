@@ -308,7 +308,6 @@ class JointDataset(CustomDataset):
             # 根据smap公式计算Z
             # kpt_abs_depth = kpt_abs_depth * scale_dict['f_x'] / scale_dict['img_w']
             kpt_abs_depth = kpt_abs_depth * scale_dict['f_x'] * scale_dict['scale_w']
-            # kpt_abs_depth = kpt_abs_depth * scale_dict['f_x'] / (scale_dict['img_w'] * scale_dict['scale_w'])
             # 骨盆点深度
             root_abs_depth = kpt_abs_depth[root_idx]
             # 其余点相对于骨盆点的深度
@@ -473,7 +472,7 @@ class JointDataset(CustomDataset):
             file_path = output_save_path + 'output.json'
             with open(file_path, 'w+') as fp:
                 json.dump(output, fp, indent=4)
-            print(f"output结果写入至: {file_path}")
+            print(f"\n output结果写入至: {file_path}")
 
         if save_mat:
             self._save_result_to_mat(output, mat_save_path)
