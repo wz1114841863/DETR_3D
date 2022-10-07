@@ -31,6 +31,7 @@ class PETR3D(DETR):
                         gt_labels,
                         gt_keypoints,
                         gt_areas,
+                        gt_depths,
                         gt_bboxes_ignore=None):
         """
         Args:
@@ -57,7 +58,7 @@ class PETR3D(DETR):
         super(SingleStageDetector, self).forward_train(img, img_metas)  # BaseDetector.forward_train()
         x = self.extract_feat(img)  # x: [bs, 256, H / 8 ..., W / 8 ...], len(x) = 4
         losses = self.bbox_head.forward_train(x, img_metas, dataset, gt_bboxes,
-                gt_labels, gt_keypoints, gt_areas, gt_bboxes_ignore)
+                gt_labels, gt_keypoints, gt_areas, gt_depths, gt_bboxes_ignore)
         return losses
 
     def forward_dummy(self, img):

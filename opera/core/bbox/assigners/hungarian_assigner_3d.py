@@ -53,7 +53,8 @@ class PoseHungarianAssigner3D(BaseAssigner):
                 gt_labels,
                 gt_keypoints,
                 gt_areas,
-                dataset,
+                gt_depths,
+                dataset_type,
                 img_meta,
                 eps=1e-7):
         """Computes one-to-one matching based on the weighted costs.
@@ -115,7 +116,7 @@ class PoseHungarianAssigner3D(BaseAssigner):
 
         # keypoint regression L1 cost
         gt_keypoints_reshape = gt_keypoints[..., :2]  # [num_gts, 15, 2], (x,y)
-        valid_kpt_flag = gt_keypoints[..., 3]  # [num_gts, 15], vis
+        valid_kpt_flag = gt_keypoints[..., 2]  # [num_gts, 15], vis
         kpt_pred_tmp = kpt_pred.clone().detach().reshape(
             kpt_pred.shape[0], -1, 2)  # [300, 15, 2]
         normalize_gt_keypoints = gt_keypoints_reshape[
@@ -131,23 +132,23 @@ class PoseHungarianAssigner3D(BaseAssigner):
         oks_cost = self.oks_cost(kpt_pred_tmp, gt_keypoints_reshape[..., :2],
                                     valid_kpt_flag, gt_areas)  # [300, num_kpt]
         # keypoint Depth cost
-        if dataset == "COCO":
-            refer_depth_cost = 0 
+        if dataset_type == "COCO":
             kpt_depth_cost = 0
-        elif dataset == "MUCO":
-            gt_keypoints_depth = gt_keypoints[..., -5:]  # [numt_gts, 15, 5] ,[Z, fx, fy, cx, cy]
-            depth_pred_tmp = depth_pred.clone().detach() # [300, 1 + 15], 网络预测的深度
-            refer_point_depth = depth_pred_tmp[..., 0][..., None]  # [300, 1], reference point 绝对深度
-            kpt_real_depth = depth_pred_tmp[..., 1:]  # [300, 15], keypoints 相对深度
-            kpt_abs_depth = kpt_real_depth + refer_point_depth  # [300, 15], keypoints 绝对深度
+        elif dataset_type == "MUCO":
+            root_idx = 2
+            gt_depths_tmp = gt_depths  # [numt_gts, 15]
+            depth_pred_tmp = depth_pred.clone().detach() # [300, 15], 网络预测的深度
+            root_depth = depth_pred_tmp[:, root_idx].unsqueeze(-1)
+            depth_pred_tmp[:, root_idx] = 0
+            depth_pred_tmp[:, :] += root_depth  # [300, 15], keypoints 绝对深度
         
-            refer_depth_cost, kpt_depth_cost = self.depth_cost(refer_point_depth, kpt_abs_depth, 
-                gt_keypoints_depth, valid_kpt_flag, img_meta['scale_factor'])  # 需要是： [300, num_kpt]
+            kpt_depth_cost = self.depth_cost(depth_pred_tmp, 
+                gt_depths_tmp, valid_kpt_flag)  # 需要是： [300, num_kpt]
         else:
             raise NotImplementedError("未知的dataset in hungarisn_assigner.")
         
         # weighted sum of above three costs
-        cost = cls_cost + kpt_cost + oks_cost + refer_depth_cost + kpt_depth_cost  # [300, num_kpt]
+        cost = cls_cost + kpt_cost + oks_cost + kpt_depth_cost  # [300, num_kpt]
 
         # 3. do Hungarian matching on CPU using linear_sum_assignment
         cost = cost.detach().cpu()
@@ -159,6 +160,7 @@ class PoseHungarianAssigner3D(BaseAssigner):
         except:
             print('Error in linear_sum_assignment')
             import pdb;pdb.set_trace()
+        
         matched_row_inds = torch.from_numpy(matched_row_inds).to(
             kpt_pred.device)
         matched_col_inds = torch.from_numpy(matched_col_inds).to(

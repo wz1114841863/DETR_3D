@@ -92,7 +92,7 @@ class LoadAnnosFromFile(MMDetLoadAnnotations):
     
     def _load_bboxes(self, results):
         bboxs = results['ann_info']['bboxs'].copy()
-        bboxs = np.asarray(bboxs, dtype=np.float32)
+        bboxs = np.array(bboxs, dtype=np.float32)
         assert bboxs.shape[-1] == 4, f"the shape of bboxs is {bboxs.shape}"
         # 修改bboxs，coco中的格式为：[x1, y1, w, h]
         # 注意这里仅修改了results['bboxs'], [num_gts, 4]
@@ -122,16 +122,11 @@ class LoadAnnosFromFile(MMDetLoadAnnotations):
         """
         # 加载关键点数据
         keypoints = results['ann_info']['bodys'].copy()  # [N, J, 11]
-        keypoints = np.asarray(keypoints, dtype=np.float32)
+        keypoints = np.array(keypoints, dtype=np.float32)
+        assert keypoints.shape[-2:] == (15, 11), \
+        f"the shape of keypoints is {keypoints.shape}"
         results['gt_keypoints'] = keypoints
         results['keypoint_fields'] = ['gt_keypoints']
-        # vis标志位
-        vis_flag = keypoints[..., 3]  # [N, J]
-        assert keypoints.shape[-1] == 11 and keypoints.shape[-2] == 15, \
-            f"the shape of keypoints is {keypoints.shape}"
-        assert vis_flag.shape[-1] == 15, \
-            f"the shape of vis_flag is {vis_flag.shape}"
-        results['gt_vis_flag'] = vis_flag
         return results
     
     def _load_areas(self, results):
@@ -147,7 +142,7 @@ class LoadAnnosFromFile(MMDetLoadAnnotations):
                 [left_top_x, left_top_y, right_bottom_x, right_bottom_y] = bboxs[i]
                 area = (right_bottom_x - left_top_x) * (right_bottom_y - left_top_y)
                 areas.append(area)
-        results['gt_areas'] = np.asarray(areas, dtype=np.float32)
+        results['gt_areas'] = np.array(areas, dtype=np.float32)
         results['areas_fields'] = ['gt_areas']
         return results
     
@@ -162,7 +157,7 @@ class LoadAnnosFromFile(MMDetLoadAnnotations):
         assert bboxs.shape[0] == keypoints.shape[0], f"bboxs 和 keypoints的长度应该保持一致"
         num_person = bboxs.shape[0]
         labels = [0 for _ in range(num_person)]
-        results['gt_labels'] = np.asarray(labels)
+        results['gt_labels'] = np.array(labels)
         return results
 
     def __call__(self, results):

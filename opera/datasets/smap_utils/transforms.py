@@ -44,21 +44,11 @@ class AugRandomFlip(MMDetRandomFlip):
         """
         # 翻转所有关键点
         keypoints = results['gt_keypoints'].copy()
-        vis_flag = results['gt_vis_flag'].copy()
-        for i in range(len(keypoints)):  # [person_num, 15, 11]
-            # change the coordinate， 也会翻转vis=0的标志位
-            keypoints[i][:, 0] = \
-                results['img_shape'][1] - 1 - keypoints[i][:, 0]  # 根据图片中心翻转x
-            # change the left and the right
-            keypoints[i][:, :] = keypoints[i][FLIP_ORDER, :]
-            vis_flag[i][:] = vis_flag[i][FLIP_ORDER]
-            
-            # kpt_vis_flag = vis_flag[i] > 0
-            # for j in range(15):
-            #     if not kpt_vis_flag[i]:
-            #         keypoints[i][j] = np.asarray([0.0 for _ in range(11)])
+        # 交换坐标, 翻转标志位 
+        keypoints[:, :, 0] = \
+            results['img_shape'][1] - 1 - keypoints[:, :, 0]
+        keypoints[:, :, :] = keypoints[:, FLIP_ORDER, :]
 
-        results['gt_vis_flag'] = vis_flag
         results['gt_keypoints'] = keypoints
         return results  
     
@@ -86,7 +76,7 @@ class AugRandomFlip(MMDetRandomFlip):
             assert bboxs.shape[1] == 4, "the shape of bbox isn't 4."
             flip_bboxs = bboxs.copy()
             flip_bboxs[:, [0, 2]] = img_shape[1] - 1 - bboxs[:, [0, 2]]
-            flip_bboxs[:,[0, 2]] = flip_bboxs[:,[2, 0]]
+            flip_bboxs[:, [0, 2]] = flip_bboxs[:, [2, 0]]
             results[key] = flip_bboxs
             
         return results
@@ -177,7 +167,6 @@ class AugRandomRotate():
             
             # 注：这里图片的尺寸是如何变换的，是否需要更新参数。
             results[key] = img_rot  # (nH, nW, 3)
-        
         results['img_shape'] = results['img'].shape
         self.M = M
         
@@ -200,12 +189,11 @@ class AugRandomRotate():
                 keypoints[i][:, :2] = \
                     self._rotate_coordinate(keypoints[i][:, :2], self.M)
                 
-                # kpt_vis_flag = vis_flag[i] > 0
-                # for j in range(15):
-                #     if not kpt_vis_flag[i]:
-                #         keypoints[i][j] = np.asarray([0.0 for _ in range(11)])
+            # 越界处理
+            img_shape = results['img_shape']
+            keypoints[:, :, 0] = np.clip(keypoints[:, :, 0], 0, img_shape[1] - 1)
+            keypoints[:, :, 1] = np.clip(keypoints[:, :, 1], 0, img_shape[0] - 1)
             results[key] = keypoints
-
         return results
     
     def _rotate_bbox(self, results):
@@ -231,7 +219,7 @@ class AugRandomRotate():
                 # 重新框定bbox: x1, y1, x2, y2
                 [min_x, min_y] = np.min(coords, axis=0)
                 [max_x, max_y] = np.max(coords, axis=0)
-                # 注: 如果图片进行填充，这里的bbox就不会越出边界。
+                # 由于图片进行填充，按理bbox并不会越界。
                 bboxs[i] = [min_x, min_y, max_x, max_y]
             # 越界处理
             img_shape = results['img_shape']
@@ -313,16 +301,9 @@ class AugResize(MMDetResize):
         # Resize 所有关键点
         for key in results.get('keypoint_fields', ['gt_keypoints']):
             keypoints = results[key].copy()
-            vis_flag = results['gt_vis_flag'].copy()
-            for i in range(len(keypoints)):
-                keypoints[i][:, :2] = \
-                    keypoints[i][:, :2] * results['scale_factor'][:2]
-                
-                # kpt_vis_flag = vis_flag[i] > 0
-                # for j in range(15):
-                #     if not kpt_vis_flag[i]:
-                #         keypoints[i][j] = np.asarray([0.0 for _ in range(11)])
-            # 关键点越界处理，其实这里关键点并不会越界
+            keypoints[:, :, :2] = \
+                    keypoints[:, :, :2] * results['scale_factor'][:2]
+            # 关键点越界处理，按理这里关键点并不会越界
             if self.keypoint_clip_border:
                 img_shape = results['img_shape']
                 keypoints[..., 0] = np.clip(keypoints[..., 0], 0, img_shape[1])
@@ -331,13 +312,14 @@ class AugResize(MMDetResize):
         results[key] = keypoints
     
     def _resize_areas(self, results):
-        """由于img 和 keypoints 全都进行了resize，需要对对应的areas也进行resize
+        """由于img 和 keypoints 全都进行了resize，需要对areas也进行resize
+        gt_
         分为两种情况：
-            COCO:
-            MUCO:
+            COCO:  直接放缩
+            MUCO:  留着最后重新计算
         """
-        dataset = results['dataset']
-        if dataset == "COCO":
+        dataset_type = results['dataset']
+        if dataset_type == "COCO":
             areas = results['gt_areas'].copy()
             areas = areas * results['scale_factor'][0] \
                 * results['scale_factor'][1]
@@ -349,6 +331,7 @@ class AugResize(MMDetResize):
         Args:
             results (dict): _description_
         """
+
         if 'scale' not in results:
             if 'scale_factor' in results:
                 img_shape = results['img'].shape[:2]
@@ -431,43 +414,27 @@ class AugCrop(MMDetRandomCrop):
             results[key] = bboxes[valid_inds]
             keypoints = results["gt_keypoints"].copy()
             results["gt_keypoints"] = keypoints[valid_inds]
-            vis_flag = results["gt_vis_flag"].copy()
-            results["gt_vis_flag"] = vis_flag[valid_inds]
             labels = results['gt_labels'].copy()
             results['gt_labels'] = labels[valid_inds]
             areas = results['gt_areas'].copy()
             results['gt_areas'] = areas[valid_inds]
             assert len(results[key]) == len(results["gt_keypoints"]), \
                 "bbox长度与keypoints长度不一致"
-            assert len(results[key]) == len(results["gt_vis_flag"]), \
-                "bbox长度与vis flag长度不一致"
-                
+            
             for key in results.get('keypoint_fields', ['gt_keypoints']):
                 kpt_offset = np.array([offset_w, offset_h], dtype=np.float32)
                 keypoints = results[key].copy()
-                vis_flag = results["gt_vis_flag"].copy()
                 for i in range(len(keypoints)):
                     keypoints[i][:, :2] = \
                         keypoints[i][:, :2] - kpt_offset  # x, y - oofset_x, offset_y
-                        
-                    kpt_vis_flag = vis_flag[i] > 0
-                    for j in range(15):
-                        if not kpt_vis_flag[i]:
-                            keypoints[i][j] = np.asarray([0.0 for _ in range(11)])
                     # 越界处理
-                    valid_inds = (keypoints[i][:, 0] >= 0.0) & \
-                        (keypoints[i][:, 1] >= 0.0)
-                    assert valid_inds.shape == kpt_vis_flag.shape, \
-                        f"valid_ids.shape:{valid_inds.shape}, kpt_vis_flag.shape:{kpt_vis_flag.shape}"
+                    valid_inds = (keypoints[i][:, 0] >= 0.0) & (keypoints[i][:, 1] >= 0.0)
                     keypoints[i][~ valid_inds] = np.asarray([0.0 for _ in range(11)], dtype=np.float32)
-                    # TODO 这里没有进一步处理 gt_vis_flag，最后重新生成
-                assert keypoints.shape[-1] == 11 and keypoints.shape[-2] == 15, \
+                    
+                assert keypoints.shape[-2:] == (15, 11), \
                     f"error in process keypoints, keypoints.shape: {keypoints.shape}"
                 results[key] = keypoints
-                # 重新生成['gt_vis_flag']
-                new_vis_flag = keypoints[..., 3]  # [N, J]
-                results['gt_vis_flag'] = new_vis_flag
-        
+                
         return results
                 
     def __repr__(self):
@@ -480,9 +447,13 @@ class AugCrop(MMDetRandomCrop):
 class AugPostProcess():
     """
     作用如下：
-        处理areas: 
-        判断gt的长度是否相同, bboxes, keypoints, areas, labels,
-        判断某个人的十五个关键点是否可见，vis.sum > 0
+        判断数据的有效性:
+            判断gt的长度是否相同, bboxes, keypoints, areas, labels,
+            判断某个人的十五个关键点是否可见，vis.sum > 0
+        后处理：
+            处理areas: 
+            处理scale_factor:
+            处理深度:
     """
     def __init__(self, 
                     with_proc_areas=True,
@@ -512,22 +483,6 @@ class AugPostProcess():
         return results
 
     @staticmethod
-    def _proc_length(results):
-        len_bboxes = len(results['gt_bboxes'])
-        if len_bboxes == 0:
-            return None
-        # 验证：
-        assert len_bboxes == len(results['gt_areas']), \
-            f"len_bboxes: {len_bboxes}, len_areas: {len(results['gt_areas'])}"
-
-        assert len_bboxes == len(results['gt_keypoints']), \
-            f"len_bboxes: {len_bboxes}, len_areas: {len(results['gt_keypoints'])}"
-
-        assert len_bboxes == len(results['gt_labels']), \
-            f"len_bboxes: {len_bboxes}, len_areas: {len(results['gt_labels'])}"
-        return results
-
-    @staticmethod
     def _proc_areas(results):
         dataset = results['dataset']
         if dataset == "MUCO":
@@ -537,13 +492,14 @@ class AugPostProcess():
                 [left_top_x, left_top_y, right_bottom_x, right_bottom_y] = bboxs[i]
                 area = np.abs((right_bottom_x - left_top_x) * (right_bottom_y - left_top_y))
                 areas.append(area)
-            areas = np.asarray(areas, dtype=np.float32)
+            areas = np.array(areas, dtype=np.float32)
             results['gt_areas'] = areas
         elif dataset == "COCO":
             """关键点和bbox可能有裁剪，但对areas没有做对应处理，仅保证长度相同"""
             pass
         else:
-            raise NotImplemented(f"未知的dataset{dataset}")
+            raise NotImplemented(f"未知的dataset: {dataset}")
+        
         return results
 
     @staticmethod
@@ -561,18 +517,8 @@ class AugPostProcess():
         new_bboxes = []
         new_areas = []
         new_labels = []
-        
-        # 仅用于测试代码
-        # valid_index = areas > 0
-        # if not valid_index.all():
-        #     print("error!")
-        #     print(f"areas:{areas}")
-        #     print(f"bboxs:{bboxes}")
-        #     print(f"bboxs:{bboxes.shape}")
-            
-        for i in range(len(keypoints)):  # num_gts
 
-                
+        for i in range(len(keypoints)):  # num_gts
             kpt_valid_flag = valid_flag[i] > 0
             assert kpt_valid_flag.shape[0] == 15
             if kpt_valid_flag.sum() == 0:
@@ -586,16 +532,64 @@ class AugPostProcess():
                 new_bboxes.append(bboxes[i])
                 new_areas.append(areas[i])
                 new_labels.append(labels[i])
-                
-        # if not valid_index.all():
-        #     print("修改之后：")
-        #     print(f"areas:{new_areas}")
-        #     print(f"bboxs:{new_bboxes}")
         
-        results['gt_keypoints'] = np.asarray(new_kpts, dtype=np.float32)
-        results['gt_bboxes'] = np.asarray(new_bboxes, dtype=np.float32)
-        results['gt_areas'] = np.asarray(new_areas, dtype=np.float32)
-        results['gt_labels'] = np.asarray(new_labels)
+        results['gt_keypoints'] = np.array(new_kpts, dtype=np.float32)
+        results['gt_bboxes'] = np.array(new_bboxes, dtype=np.float32)
+        results['gt_areas'] = np.array(new_areas, dtype=np.float32)
+        results['gt_labels'] = np.array(new_labels)
+        return results
+
+    @staticmethod
+    def _proc_scale(results):
+        """重新计算scale_factor
+        旋转，resize，crop均导致图片大小发生变化
+        """     
+        h, w = results['img_shape'][:2]
+        ori_h, ori_w = results['ori_shape'][:2]
+        scale_w = w / ori_w
+        scale_h = h / ori_h
+        scale_factor = [scale_w, scale_h, scale_w, scale_h]
+        results['scale_factor'] = scale_factor
+        
+        return results
+
+    @staticmethod
+    def _proc_depths(results):
+        """将关键点坐标与深度分离，同时对深度按照SMAP格式进行处理
+        depth = depth / scale_x / f_x
+        """
+        keypoints = results['gt_keypoints'].copy()
+        kpt_coords = keypoints[:, :, :2]  # (x, y), [num_gts, 15, 11]
+        vis_flag = keypoints[:, :, 3]  # (vis)
+        kpt = np.concatenate((kpt_coords, vis_flag[..., None]), -1)
+        results['gt_keypoints'] = kpt
+        
+        depth = keypoints[:, :, -5:]  # [Z, fx, fy, cx, cy]. [num_gts, 15, 5]
+        scale_w = results['scale_factor'][0]
+        depth_Z = depth[:, :, 0] / scale_w / depth[:, :, 1]  # [num_gts, 15]
+        results['gt_depths'] = depth_Z
+        
+        return results
+
+    @staticmethod
+    def _proc_length(results):
+        len_bboxes = len(results['gt_bboxes'])
+        if len_bboxes == 0:
+            return None
+        
+        # 验证：
+        assert len_bboxes == len(results['gt_areas']), \
+            f"len_bboxes: {len_bboxes}, len_areas: {len(results['gt_areas'])}"
+
+        assert len_bboxes == len(results['gt_keypoints']), \
+            f"len_bboxes: {len_bboxes}, len_keypoints: {len(results['gt_keypoints'])}"
+
+        assert len_bboxes == len(results['gt_labels']), \
+            f"len_bboxes: {len_bboxes}, len_labels: {len(results['gt_labels'])}"
+            
+        assert len_bboxes == len(results['gt_depths']), \
+            f"len_bboxes: {len_bboxes}, len_depths: {len(results['gt_depths'])}"
+            
         return results
 
     def __call__(self, results):
@@ -605,7 +599,9 @@ class AugPostProcess():
             results = self._proc_areas(results)
         if self.with_proc_kpts:
             results = self._proc_kpts(results)
-        # 会返回None
+            results = self._proc_scale(results)
+            results = self._proc_depths(results)
         if self.with_judge_length:  
             results = self._proc_length(results)
+
         return results 

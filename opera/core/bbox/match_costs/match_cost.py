@@ -150,10 +150,6 @@ class OksCost(object):
 @MATCH_COST.register_module()
 class DepthL1Cost(object):
     """用来计算深度Cost
-    包括两个方面：
-        参考点的绝对深度Cost
-        十五个关键点的绝对深度Cost
-    # TODO 可能需要进一步考虑和优化Cost的计算方式
     Args:
         weight (int | float, optional): loss_weight.
         
@@ -161,62 +157,36 @@ class DepthL1Cost(object):
         torch.Tensor: depth_cost value with weight.
     """
     def __init__(self, 
-                    kpt_depth_weight=1.0,
-                    refer_depth_weight=1.0):
+                    kpt_depth_weight=1.0):
         self.kpt_depth_weight = kpt_depth_weight
-        self.refer_depth_weight = refer_depth_weight
         
-    def __call__(self, refer_point_depth, kpt_abs_depth, 
-            gt_keypoints_depth, valid_kpt_flag, scale):
+    def __call__(self, depth_pred, gt_depths , valid_kpt_flag):
         """求深度损失 及其所占比例
-
         Args:
-            refer_point_depth (Tensor): 预测的参考点的绝对深度  # [300, 1]
-            kpt_abs_depth (Tensor): 预测的关键点的绝对深度  # [300, 15]
-            gt_keypoints_depth (Tensor): gt_keypoints_depth [N, 15, 5], [Z, fx, fy, cx, cy]
-            valid_kpt_flag (_type_): 有效的关键点标志位， vis, [N, 15, 1]
-            scale: w_scale, h_scale, w_scale, h_scale]
+            depth_pred: 预测的关键点的绝对深度  # [300, 15]
+            gt_depths (Tensor):[N, 15], detZ
+            valid_kpt_flag (_type_): 有效的关键点标志位， vis, [N, 15]
         """
-        scale_w = scale[0]
-        kpt_depth_cost = []
-        refer_depth_cost= []
-        for i in range(len(gt_keypoints_depth)):
-            refer_depth_tmp = refer_point_depth.clone()  # [300, 1]
-            kpt_depth_tmp = kpt_abs_depth.clone()  # [300, 15]
-            valid_flag = valid_kpt_flag[i] > 0  # [15]
-            valid_flag_expand = valid_flag.unsqueeze(0).expand_as(kpt_depth_tmp)
-            kpt_depth_tmp[~valid_flag_expand] = 0
+        depth_costs = []
 
-            # 计算参考点深度损失
-            len_valid = len(gt_keypoints_depth[i][valid_flag])
-            # len_valid = len_valid if len_valid > 0 else 1  # 防止关键点个数为0
-            gt_aver_depth = torch.sum(gt_keypoints_depth[i][valid_flag][..., 0]) / \
-                len_valid  # 有效的关键点深度 / 有效的关键点个数
-            gt_aver_f = torch.sum(gt_keypoints_depth[i][valid_flag][..., 1]) / \
-                len_valid  # 有效的fx / 有效的关键点个数
-            assert gt_aver_f != 0, f"有效的关键点个数为零"
-            # gt_aver_f = gt_aver_f if gt_aver_f > 0 else 1
-            gt_aver_real_depth = gt_aver_depth / scale_w / gt_aver_f
-            refer_cost = torch.abs(refer_depth_tmp - gt_aver_real_depth)  # [300, 1]
+        for i in range(len(gt_depths)):
+            depth_pred_tmp = depth_pred.clone()
+            valid_flag = valid_kpt_flag[i] > 0  # [15]
+            valid_flag_expand = valid_flag.unsqueeze(0).expand_as(depth_pred_tmp)
+            depth_pred_tmp[~valid_flag_expand] = 0
+
             # 计算关键点深度损失
-            # gt_depth = torch.zeros_like(gt_keypoints_depth[i][..., 0])
-            gt_depth = torch.zeros((15, )).cuda()
-            gt_depth[valid_flag] = gt_keypoints_depth[i][valid_flag][..., 0] / scale_w / \
-                gt_keypoints_depth[i][valid_flag][..., 1]  # Z * w / fx, [15, ]
-            kpt_cost = torch.cdist(
-                kpt_depth_tmp,
-                gt_depth.unsqueeze(0),  # [1, 15]
+            depth_cost = torch.cdist(
+                depth_pred_tmp,
+                gt_depths.unsqueeze(0),  # [1, 15]
                 p=1,)  # [300, 15]
             avg_factor = torch.clamp(valid_flag.float().sum(), 1.0)
-            kpt_cost = kpt_cost / avg_factor
+            depth_cost = depth_cost/ avg_factor
             
-            refer_depth_cost.append(refer_cost)
-            kpt_depth_cost.append(kpt_cost)
-        kpt_depth_cost = torch.cat(kpt_depth_cost, dim=1)
-        refer_depth_cost = torch.cat(refer_depth_cost, dim=1)
-        num_nan_1 = torch.isnan(kpt_depth_cost).int().sum()
-        num_nan_2 = torch.isnan(refer_depth_cost).int().sum()
-        if num_nan_1 > 0 or num_nan_2 > 0:
-            import pdb;pdb.set_trace()
-        return refer_depth_cost * self.refer_depth_weight, \
-                kpt_depth_cost * self.kpt_depth_weight
+            depth_costs.append(depth_cost)
+            
+        kpt_depth_cost = torch.cat(depth_costs, dim=1)
+        # num_nan_1 = torch.isnan(kpt_depth_cost).int().sum()
+        # if num_nan_1 > 0:
+        #     import pdb;pdb.set_trace()
+        return kpt_depth_cost * self.kpt_depth_weight

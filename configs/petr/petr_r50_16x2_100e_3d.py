@@ -128,8 +128,7 @@ model = dict(
         loss_kpt_refine=dict(type='mmdet.L1Loss', loss_weight=80.0),
         loss_oks_refine=dict(type='opera.OKSLoss', num_keypoints=15, loss_weight=3.0),
         loss_depth=dict(type='mmdet.L1Loss', loss_weight=7),
-        loss_depth_rpn=dict(type='mmdet.L1Loss', loss_weight=7,
-        ),
+        loss_depth_rpn=dict(type='mmdet.L1Loss', loss_weight=7),
     ),
     train_cfg=dict(
         assigner=dict(
@@ -137,13 +136,11 @@ model = dict(
             cls_cost=dict(type='mmdet.FocalLossCost', weight=2.0),
             kpt_cost=dict(type='opera.KptL1Cost', weight=70.0),
             oks_cost=dict(type='opera.OksCost', num_keypoints=15, weight=7.0),
-            depth_cost=dict(type='opera.DepthL1Cost', 
-                kpt_depth_weight=1, 
-                refer_depth_weight=1),
+            depth_cost=dict(type='opera.DepthL1Cost', kpt_depth_weight=1),
         )
     ),
     
-    test_cfg=dict(max_per_img=100),  # eval时保留多少个候选目标
+    test_cfg=dict(max_per_img=30),  # eval时保留多少个候选目标
 ) 
 
 # optimizer

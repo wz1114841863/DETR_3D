@@ -278,8 +278,8 @@ class PetrTransformerDecoder3D(TransformerLayerSequence):
                     raise NotImplementedError
                 
             if depth_branches is not None:
-                tmp = depth_branches[lid](output)  # [bs, 300, 1 + 15]
-                if kpts_depth.shape[-1] == 1 + self.num_keypoints:
+                tmp = depth_branches[lid](output)  # [bs, 300, 15]
+                if kpts_depth.shape[-1] == self.num_keypoints:
                     new_kpts_depth = tmp + kpts_depth
                     kpts_depth = new_kpts_depth.detach()
                 else:
@@ -662,32 +662,28 @@ class PETRTransformer3D(Transformer):
             # [bs, sum(h*w), 15*2]
             enc_outputs_kpt_unact[..., 0::2] += output_proposals[..., 0:1]  # [bs, sum(h*w), 15]
             enc_outputs_kpt_unact[..., 1::2] += output_proposals[..., 1:2]  # [bs, sum(h*w), 15]
-            # TODO, 将参考点移至骨盆点
             # depth
             enc_outputs_depth = \
-                depth_branches[self.decoder.num_layers](output_memory)  # [bs, sum(h*w), 1 + 15]
+                depth_branches[self.decoder.num_layers](output_memory)  # [bs, sum(h*w), 15]
             # topk
             topk = self.two_stage_num_proposals  # 300
             topk_proposals = torch.topk(
                 enc_outputs_class[..., 0], topk, dim=1)[1]  # [bs, 300]
-            # topk_coords_unact = torch.gather(
-            #     enc_outputs_coord_unact, 1,
-            #     topk_proposals.unsqueeze(-1).repeat(1, 1, 4))
-            # topk_coords_unact = topk_coords_unact.detach()
+            
             topk_kpts_unact = torch.gather(  # [bs, 300, 30]
                 enc_outputs_kpt_unact, 1,
                 topk_proposals.unsqueeze(-1).repeat(
                     1, 1, enc_outputs_kpt_unact.size(-1)))  # 取出对应的kpts
             topk_kpts_unact = topk_kpts_unact.detach()  # 脱离反向传播
             
-            topk_depth = torch.gather(  # [bs, 300, 1 + 15]
+            topk_depth = torch.gather(  # [bs, 300, 15]
                 enc_outputs_depth, 1,
                 topk_proposals.unsqueeze(-1).repeat(
                     1, 1, enc_outputs_depth.size(-1)))
             topk_depth = topk_depth.detach()
             
             reference_points = topk_kpts_unact.sigmoid()  # [bs, 300, 30], 归一化后的坐标
-            kpts_depth = topk_depth  # [bs, 300, 1 + 15], 这里没有做任何处理
+            kpts_depth = topk_depth  # [bs, 300, 15], 这里没有做任何处理
 
             init_reference_out = reference_points
             init_depth_out = kpts_depth

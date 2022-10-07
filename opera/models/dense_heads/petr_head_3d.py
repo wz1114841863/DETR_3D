@@ -170,7 +170,7 @@ class PETRHead3D(AnchorFreeHead):
         for _ in range(self.num_kpt_fcs):  # 2
             kpt_branch.append(Linear(512, 512))
             kpt_branch.append(nn.ReLU())
-        kpt_branch.append(Linear(512, 2 * self.num_keypoints))  # 不修改这里，直接添加新的回归分支
+        kpt_branch.append(Linear(512, 2 * self.num_keypoints))  # Linear(512, 30, bias=True)
         kpt_branch = nn.Sequential(*kpt_branch)
 
         depth_branch = []
@@ -179,7 +179,7 @@ class PETRHead3D(AnchorFreeHead):
         for _ in range(self.num_kpt_fcs):  # 2
             depth_branch.append(Linear(512, 512))
             depth_branch.append(nn.ReLU())
-        depth_branch.append(Linear(512, 1 + self.num_keypoints))
+        depth_branch.append(Linear(512, self.num_keypoints))  # Linear(512, 15, bias=True)
         depth_branch = nn.Sequential(*depth_branch)
         
         def _get_clones(module, N):
@@ -210,20 +210,20 @@ class PETRHead3D(AnchorFreeHead):
         refine_kpt_branch.append(Linear(self.embed_dims, 2))  # (x, y)
         refine_kpt_branch = nn.Sequential(*refine_kpt_branch)  # Linear(256, 3, bias=True)
         
-        refine_depth_branch = []
-        for _ in range(self.num_kpt_fcs): 
-            refine_depth_branch.append(Linear(self.embed_dims, self.embed_dims))
-            refine_depth_branch.append(nn.ReLU())
-        refine_depth_branch.append(Linear(self.embed_dims, 1))  # (x, y)
-        refine_depth_branch = nn.Sequential(*refine_depth_branch)  # Linear(256, 3, bias=True)    
+        # refine_depth_branch = []
+        # for _ in range(self.num_kpt_fcs): 
+        #     refine_depth_branch.append(Linear(self.embed_dims, self.embed_dims))
+        #     refine_depth_branch.append(nn.ReLU())
+        # refine_depth_branch.append(Linear(self.embed_dims, 1))  # (x, y)
+        # refine_depth_branch = nn.Sequential(*refine_depth_branch)  # Linear(256, 3, bias=True)    
         
         if self.with_kpt_refine:
             num_pred = self.transformer.refine_decoder.num_layers  # 2
             self.refine_kpt_branches = _get_clones(refine_kpt_branch, num_pred)  # 2 * refine_kpt_branch
         
-        if self.with_depth_refine:  # 目前为False
-            num_pred = self.transformer.refine_decoder.num_layers  # 2
-            self.refine_depth_branches = _get_clones(refine_depth_branch, num_pred)
+        # if self.with_depth_refine:  # 目前为False
+        #     num_pred = self.transformer.refine_decoder.num_layers  # 2
+        #     self.refine_depth_branches = _get_clones(refine_depth_branch, num_pred)
             
         self.fc_hm = Linear(self.embed_dims, self.num_keypoints)  # Linear(256, 15, bias=True)
 
@@ -241,25 +241,11 @@ class PETRHead3D(AnchorFreeHead):
             for m in self.refine_kpt_branches:
                 constant_init(m[-1], 0, bias=0)
         # initialization of depth branch
-        # for m in self.depth_branches:
-        #     constant_init(m[-1], 0, bias=0)
-        # if self.with_depth_refine:
-        #     for m in self.refine_depth_branches:
-        #         constant_init(m[-1], 0, bias=0)
-
-        # initialization of depth branch
         for m in self.depth_branches:
             for i in range(len(m)):
                 if type(m[i]) == nn.Linear:
                     nn.init.normal_(m[i].weight, std=0.01)
-        # if self.with_depth_refine:
-        #     for m in self.refine_depth_branches:
-        #         for i in range(len(m)):
-        #             if type(m[i]) == nn.Linear:
-        #                 nn.init.normal_(m[i].weight, std=0.01)
-
         # initialize bias for heatmap prediction
-
         bias_init = bias_init_with_prob(0.1)
         normal_init(self.fc_hm, std=0.01, bias=bias_init)
 
@@ -348,8 +334,8 @@ class PETRHead3D(AnchorFreeHead):
             tmp_kpt_coord += reference_kpt  # [bs, 300, 30]
             outputs_kpt = tmp_kpt_coord.sigmoid()
             # depth
-            tmp_kpt_depth = self.depth_branches[lvl](hs[lvl])  # [bs, 300, 1 + 15]
-            tmp_kpt_depth += reference_depth  # [bs, 300, 1 + 15]
+            tmp_kpt_depth = self.depth_branches[lvl](hs[lvl])  # [bs, 300, 15]
+            tmp_kpt_depth += reference_depth  # [bs, 300, 15]
             outputs_depth = tmp_kpt_depth
 
             outputs_classes.append(outputs_class)
@@ -358,7 +344,7 @@ class PETRHead3D(AnchorFreeHead):
             
         outputs_classes = torch.stack(outputs_classes)  # (3, bs, 300, 1)
         outputs_kpts = torch.stack(outputs_kpts)  # (3, bs, 300, 30)
-        outputs_depths = torch.stack(outputs_depths)  # (3, bs, 300, 1 + 15)
+        outputs_depths = torch.stack(outputs_depths)  # (3, bs, 300, 15)
 
         if hm_proto is not None:
             # get heatmap prediction (training phase)
@@ -481,12 +467,13 @@ class PETRHead3D(AnchorFreeHead):
     def forward_train(self,
                         x,
                         img_metas,
-                        dataset,
+                        dataset_type,
                         gt_bboxes,
                         gt_labels=None,
                         gt_keypoints=None,
                         gt_areas=None,
                         gt_bboxes_ignore=None,
+                        gt_depths=None,
                         proposal_cfg=None,
                       **kwargs):
         """Forward function for training mode.
@@ -519,9 +506,8 @@ class PETRHead3D(AnchorFreeHead):
         if gt_labels is None:
             loss_inputs = outs + (gt_bboxes, gt_keypoints, gt_areas, img_metas)
         else:
-            loss_inputs = outs + (gt_bboxes, gt_labels, 
-                gt_keypoints, gt_areas, dataset, img_metas)
-                
+            loss_inputs = outs + (gt_bboxes, gt_labels, gt_keypoints, gt_areas, 
+                        gt_depths, dataset_type, img_metas)
         losses, refine_targets = self.loss(
             *loss_inputs, gt_bboxes_ignore=gt_bboxes_ignore)
         # get pose refinement loss
@@ -543,7 +529,8 @@ class PETRHead3D(AnchorFreeHead):
                 gt_labels_list,
                 gt_keypoints_list,
                 gt_areas_list,
-                dataset,
+                gt_depths_list,
+                dataset_type,
                 img_metas,
                 gt_bboxes_ignore=None):
         """Loss function.
@@ -596,7 +583,8 @@ class PETRHead3D(AnchorFreeHead):
         all_gt_labels_list = [gt_labels_list for _ in range(num_dec_layers)]
         all_gt_keypoints_list = [gt_keypoints_list for _ in range(num_dec_layers)]
         all_gt_areas_list = [gt_areas_list for _ in range(num_dec_layers)]
-        dataset_list = [dataset for _ in range(num_dec_layers)]
+        all_gt_depths_list = [gt_depths_list for _ in range(num_dec_layers)]
+        dataset_type_list = [dataset_type for _ in range(num_dec_layers)]
         img_metas_list = [img_metas for _ in range(num_dec_layers)]
         # 修改输入，修改返回值
         losses_cls, losses_kpt, losses_oks, losses_depth, area_targets_list, \
@@ -604,8 +592,8 @@ class PETRHead3D(AnchorFreeHead):
         kpt_weights_list, depth_weights_list, \
         kpt_targets_list,  depth_targets_list = multi_apply(
                 self.loss_single, all_cls_scores, all_kpt_preds, all_depths_preds,
-                all_gt_labels_list, all_gt_keypoints_list,
-                all_gt_areas_list, dataset_list, img_metas_list)  # 计算decoder输出产生的loss
+                all_gt_labels_list, all_gt_keypoints_list, all_gt_areas_list, 
+                all_gt_depths_list, dataset_type_list, img_metas_list)  # 计算decoder输出产生的loss
 
         loss_dict = dict()
         # loss of proposal generated from encode feature map.
@@ -614,10 +602,11 @@ class PETRHead3D(AnchorFreeHead):
                 torch.zeros_like(gt_labels_list[i])
                 for i in range(len(img_metas))
             ]
+            # FIXME
             enc_losses_cls, enc_losses_kpt, enc_losses_depth = \
                 self.loss_single_rpn(
                     enc_cls_scores, enc_kpt_preds, enc_depth_preds, binary_labels_list,
-                    gt_keypoints_list, gt_areas_list, dataset, img_metas)
+                    gt_keypoints_list, gt_areas_list, gt_depths_list, dataset_type, img_metas)
             
             loss_dict['enc_loss_cls'] = enc_losses_cls
             loss_dict['enc_loss_kpt'] = enc_losses_kpt
@@ -651,26 +640,18 @@ class PETRHead3D(AnchorFreeHead):
 
     def loss_heatmap(self, hm_pred, hm_mask, gt_keypoints, gt_labels,
                         gt_bboxes):
-        """
-        这里的gt_keypoints与之前不同, 进行修正
-        """
         assert hm_pred.shape[-2:] == hm_mask.shape[-2:]
         num_img, _, h, w = hm_pred.size()
         # placeholder of heatmap target (Gaussian distribution)
         hm_target = hm_pred.new_zeros(hm_pred.shape)
-        for i, (gt_label, gt_bbox, gt_keypoint_depth) in enumerate(
+        for i, (gt_label, gt_bbox, gt_keypoint) in enumerate(
                 zip(gt_labels, gt_bboxes, gt_keypoints)):
             if gt_label.size(0) == 0:
                 continue
-            gt_keypoint = torch.cat((gt_keypoint_depth[..., :2], gt_keypoint_depth[..., 3].unsqueeze(-1)), -1)  # [x, y, vis]
             gt_keypoint = gt_keypoint.reshape(gt_keypoint.shape[0], -1, 3).clone()
             gt_keypoint[..., :2] /= 8
             # if gt_keypoint[..., 0].max() > w or gt_keypoint[..., 1].max() > h:
             #     import pdb;pdb.set_trace() 
-            # FIXME 为什么会有 keypoint 越界
-            # 由于数据处理有错误，导致有keypoints不在图片范围内
-            # gt_keypoint[..., 0] = torch.clip(gt_keypoint[..., 0], 0, w - 1)
-            # gt_keypoint[..., 1] = torch.clip(gt_keypoint[..., 1], 0, h - 1)
             assert gt_keypoint[..., 0].max() <= w  # new coordinate system
             assert gt_keypoint[..., 1].max() <= h  # new coordinate system
             gt_bbox /= 8
@@ -701,7 +682,8 @@ class PETRHead3D(AnchorFreeHead):
                     gt_labels_list,
                     gt_keypoints_list,
                     gt_areas_list,
-                    dataset_list,
+                    gt_depths_list,
+                    dataset_type_list,
                     img_metas):
         """Loss function for outputs from a single decoder layer of a single
         feature level.
@@ -731,7 +713,7 @@ class PETRHead3D(AnchorFreeHead):
         depth_preds_list = [depth_preds[i] for i in range(num_imgs)]
 
         cls_reg_depth_targets = self.get_targets(cls_scores_list, kpt_preds_list, depth_preds_list,
-                gt_labels_list, gt_keypoints_list, gt_areas_list, dataset_list, img_metas)
+                gt_labels_list, gt_keypoints_list, gt_areas_list, gt_depths_list, dataset_type_list, img_metas)
         
         (labels_list, label_weights_list, kpt_targets_list, kpt_weights_list, depth_targets_list, 
             depth_weights_list, area_targets_list, num_total_pos, num_total_neg) = cls_reg_depth_targets
@@ -741,8 +723,8 @@ class PETRHead3D(AnchorFreeHead):
         label_weights = torch.cat(label_weights_list, 0)  # [bs * 300, ]
         kpt_targets = torch.cat(kpt_targets_list, 0)  # [bs * 300, 30]
         kpt_weights = torch.cat(kpt_weights_list, 0)  # [bs * 300, 30]
-        depth_targets = torch.cat(depth_targets_list, 0)  # [bs * 300, 16]
-        depth_weights = torch.cat(depth_weights_list, 0)  # [bs * 300, 16]
+        depth_targets = torch.cat(depth_targets_list, 0)  # [bs * 300, 15]
+        depth_weights = torch.cat(depth_weights_list, 0)  # [bs * 300, 15]
         area_targets = torch.cat(area_targets_list, 0)  # [bs * 300, ]
 
         # classification loss
@@ -799,20 +781,18 @@ class PETRHead3D(AnchorFreeHead):
                 pos_valid,
                 pos_areas,
                 avg_factor=num_total_pos)
+        
         # depth L1 Loss 
         # 使用depth_weights和dataset在signle_target去控制是否计算深度loss, 故这里不在判断数据集类型
-        depth_preds = depth_preds.reshape(-1, depth_preds.shape[-1])  # [bs * 300, 1 + 15]
+        depth_preds = depth_preds.reshape(-1, depth_preds.shape[-1])  # [bs * 300, 15]
         num_valid_depth = torch.clamp(
             reduce_mean(depth_weights.sum()), min=1).item()
         # 处理关键点的相对深度 至 绝对深度
-        # 为什么不支持 [..., 1:] += [..., 0],已解决，由于shape对不上 [..., 1:] += [..., 0].unsqueeze(-1)
-        # refer_center_depth = depth_preds[..., 0]  # [bs * 300, ]
-        # refer_center_depth_tmp = refer_center_depth.unsqueeze(-1).repeat(1, 15)  # [bs * 300, 15]
-        # kpt_real_depth = depth_preds[..., 1:]  # [bs * 300, 15]
-        # kpt_real_depth_tmp = kpt_real_depth + refer_center_depth_tmp  # [bs * 300, 15]
-        # kpt_depth_preds = torch.cat((refer_center_depth.unsqueeze(-1), kpt_real_depth_tmp), -1)
         depth_preds_tmp = depth_preds.clone()  # 保证传回的depth_preds依旧是绝对 + 相对
-        depth_preds_tmp[..., 1:] = depth_preds_tmp[..., 0].unsqueeze(-1) + depth_preds_tmp[..., 1:]
+        root_idx = 2
+        root_depth = depth_preds_tmp[..., root_idx].unsqueeze(-1)
+        depth_preds_tmp[..., root_idx] = 0  # 先把root_depth清空
+        depth_preds_tmp[..., :] += root_depth
         loss_depth = self.loss_depth(
             depth_preds_tmp, depth_targets, depth_weights, avg_factor=num_valid_depth)
         
@@ -828,7 +808,8 @@ class PETRHead3D(AnchorFreeHead):
                     gt_labels_list,
                     gt_keypoints_list,
                     gt_areas_list,
-                    dataset_list,
+                    gt_depths_list,
+                    dataset_type_list,
                     img_metas):
         """Compute regression and classification targets for a batch image.
 
@@ -871,7 +852,7 @@ class PETRHead3D(AnchorFreeHead):
         (labels_list, label_weights_list, kpt_targets_list, kpt_weights_list, depth_targets_list, 
             depth_weights_list, area_targets_list, pos_inds_list, neg_inds_list) = multi_apply(
                 self._get_target_single, cls_scores_list, kpt_preds_list, depth_preds_list,
-                gt_labels_list, gt_keypoints_list, gt_areas_list, dataset_list, img_metas)
+                gt_labels_list, gt_keypoints_list, gt_areas_list, gt_depths_list, dataset_type_list, img_metas)
         num_total_pos = sum((inds.numel() for inds in pos_inds_list))  # pos 个数
         num_total_neg = sum((inds.numel() for inds in neg_inds_list))  # neg 个数
         return (labels_list, label_weights_list, kpt_targets_list,
@@ -885,7 +866,8 @@ class PETRHead3D(AnchorFreeHead):
                             gt_labels,
                             gt_keypoints,
                             gt_areas,
-                            dataset,
+                            gt_depths,
+                            dataset_type,
                             img_meta):
         """Compute regression and classification targets for one image.
 
@@ -926,14 +908,11 @@ class PETRHead3D(AnchorFreeHead):
                 - neg_inds (Tensor): Sampled negative indices for each image.
         """
         num_querys = kpt_pred.size(0)
-        # # 将ground truth 转为 float32
-        # gt_keypoints = gt_keypoints.to(torch.float32)
-        # gt_areas = gt_areas.to(torch.float32)
+
         # assigner and sampler
         assign_result = self.assigner.assign(cls_score, kpt_pred, depth_pred, 
-                            gt_labels, gt_keypoints, gt_areas, dataset, img_meta)
-        sampling_result = self.sampler.sample(assign_result, kpt_pred,
-                                        gt_keypoints)
+                        gt_labels, gt_keypoints, gt_areas, gt_depths, dataset_type, img_meta)
+        sampling_result = self.sampler.sample(assign_result, kpt_pred, gt_keypoints)
         pos_inds = sampling_result.pos_inds  # query中选中的index eg: [279, 296]
         neg_inds = sampling_result.neg_inds  # query中未选中的index eg: [0, ..., 299]
 
@@ -947,15 +926,13 @@ class PETRHead3D(AnchorFreeHead):
         label_weights = gt_labels.new_ones(num_querys)  # [300, ]， 这里是全1
 
         img_h, img_w, _ = img_meta['img_shape']
-        # keypoint targets
+        # keypoint targets, keypoint weights
         kpt_targets = torch.zeros_like(kpt_pred)  # [300, 15*2]
         kpt_weights = torch.zeros_like(kpt_pred)  # [300, 15*2]
         pos_gt_kpts = gt_keypoints[sampling_result.pos_assigned_gt_inds]  # [num_gts, 15, 11]
-        try:
-            valid_idx = pos_gt_kpts[..., 3] > 0  # vis, [num_gts, 15]
-        except:
-            print("error")
-            import pdb;pdb.set_trace()
+
+        valid_idx = pos_gt_kpts[..., 2] > 0  # vis, [num_gts, 15]
+
         pos_kpt_weights = kpt_weights[pos_inds].reshape(
             pos_gt_kpts.shape[0], kpt_weights.shape[-1] // 2, 2)  # [num_gts, 15, 2]
         pos_kpt_weights[valid_idx] = 1.0
@@ -972,39 +949,22 @@ class PETRHead3D(AnchorFreeHead):
             pos_gt_kpts.shape[0], kpt_pred.shape[-1])  # [num_gts, 2]
 
         # depth target
-        if dataset == "COCO":
-            depth_targets = torch.zeros_like(depth_pred)
-            depth_weights = torch.zeros_like(depth_pred)
-        elif dataset == "MUCO":
-            depth_targets = torch.zeros_like(depth_pred)  # [300, 1 + 15]
-            depth_weights = torch.zeros_like(depth_pred)  # [300, 1 + 15]
-            gt_keypoints_tmp = gt_keypoints[sampling_result.pos_assigned_gt_inds]
-            pos_gt_kpts = gt_keypoints_tmp  # [num_gts, 15, 11]
-            valid_idx = pos_gt_kpts[:, :, 3] > 0  # vis, [num_gts, 15]
-            # depth_weights[pos_inds][..., 0] = 1.0  # reference point 的 weight 直接设为1
-            # depth_weights[pos_inds][..., 1:] = valid_idx.int()  # 形状要对应上
-            # TODO 为什么无法赋值
-            num_gts = gt_keypoints.shape[0]
-            refer_point_weights = torch.ones((num_gts, 1)).cuda()  # [num_gts, 1]
-            depth_weights[pos_inds] = torch.cat((refer_point_weights, valid_idx.int()), -1)  # [num_gts, 1 + 15]
-            # 这里直接对gt_targets进行变换，之后计算loss时就不用再针对进行变换, 但是需要考虑preds中绝对深度与相对深度
-            kpt_gt_depth = torch.zeros((num_gts, 15), dtype=torch.float32).cuda()
-            # FIXME 这里的图片宽度应该是变换后的图片深度还是变换前的图片深度, 进一步考虑
-            img_scale = img_meta['scale_factor'][0]
-            # kpt_gt_depth[valid_idx] = gt_keypoints_tmp[valid_idx][..., 6] * img_w / \
-            #     gt_keypoints_tmp[valid_idx][..., 7]  # [num_gts, 15]
-            kpt_gt_depth[valid_idx] = gt_keypoints_tmp[valid_idx][..., 6] / img_scale / \
-                gt_keypoints_tmp[valid_idx][..., 7]  # [num_gts, 15]
-            kpt_center_depth = torch.sum(kpt_gt_depth, -1) / torch.sum(valid_idx.int(), -1)  # [num_gts, ]
-            depth_targets[pos_inds] = torch.cat((kpt_center_depth.unsqueeze(-1), kpt_gt_depth), -1)
-            if torch.isnan(depth_targets).int().sum():
-                import pdb;pdb.set_trace()
+        depth_targets = torch.zeros_like(depth_pred)  # [300, 15]
+        depth_weights = torch.zeros_like(depth_pred)  # [300, 15]      
+        if dataset_type == "COCO":
+            pass
+        elif dataset_type == "MUCO":
+            # 这里的gt_depths已经是处理过的归一化深度
+            gt_depths_tmp = gt_depths[sampling_result.pos_assigned_gt_inds]
+            gt_keypoints_tmp = gt_keypoints[sampling_result.pos_assigned_gt_inds]  # [num_gts, 15, 3] 
+            valid_idx = gt_keypoints_tmp [:, :, 2] > 0  # vis, [num_gts, 15]
+            depth_weights[pos_inds] = valid_idx.int()
+            depth_targets[pos_inds] = gt_depths_tmp
         else:
             raise  NotImplementedError("未知的dataset in _get_target_single.")
 
         # area target
-        area_targets = kpt_pred.new_zeros(
-            kpt_pred.shape[0])  # get areas for calculating oks
+        area_targets = kpt_pred.new_zeros(kpt_pred.shape[0])
         pos_gt_areas = gt_areas[sampling_result.pos_assigned_gt_inds]
         area_targets[pos_inds] = pos_gt_areas
 
@@ -1018,7 +978,8 @@ class PETRHead3D(AnchorFreeHead):
                         gt_labels_list,
                         gt_keypoints_list,
                         gt_areas_list,
-                        dataset,
+                        gt_depths_list,
+                        dataset_type,
                         img_metas):
         """Loss function for outputs from a single decoder layer of a single
         feature level.
@@ -1047,7 +1008,7 @@ class PETRHead3D(AnchorFreeHead):
         kpt_preds_list = [kpt_preds[i] for i in range(num_imgs)]
         depth_preds_list = [depth_preds[i] for i in range(num_imgs)]
         cls_reg_depth_targets = self.get_targets(cls_scores_list, kpt_preds_list, depth_preds_list,
-                gt_labels_list, gt_keypoints_list, gt_areas_list, dataset, img_metas)
+                gt_labels_list, gt_keypoints_list, gt_areas_list, gt_depths_list, dataset_type, img_metas)
         (labels_list, label_weights_list, kpt_targets_list, kpt_weights_list, depth_targets_list,
             depth_weights_list, area_targets_list, num_total_pos, num_total_neg) = cls_reg_depth_targets
         labels = torch.cat(labels_list, 0)
@@ -1086,9 +1047,12 @@ class PETRHead3D(AnchorFreeHead):
 
         # keypoint Depth L1 loss
         depth_preds = depth_preds.reshape(-1, depth_preds.shape[-1])
-        assert depth_preds.shape[-1] == 16, f"shape 与设想不一致"
+        assert depth_preds.shape[-1] == self.num_keypoints, f"shape 与设想不一致"
         # 将相对深度转为绝对深度
-        depth_preds[..., 1:] = depth_preds[..., 1:] + depth_preds[..., 0].unsqueeze(-1)
+        root_idx = 2
+        root_depth = depth_preds[:, root_idx].unsqueeze(-1)
+        depth_preds[:, root_idx] = 0
+        depth_preds[:, :] += root_depth
         num_valid_depth = torch.clamp(
             reduce_mean(depth_weights.sum()), min=1).item()
         loss_depth = self.loss_depth_rpn(

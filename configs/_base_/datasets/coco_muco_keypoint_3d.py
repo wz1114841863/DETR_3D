@@ -11,9 +11,10 @@ ann_mupots3d_path = "/home/notebook/code/personal/S9043252/wz/dataset_anno/MuPoT
 
 test_data_mupots3d_root = "/home/notebook/code/personal/S9043252/wz/data/MuPoTs/"
 test_ann_mupots3d_path = "/home/notebook/code/personal/S9043252/wz/dataset_anno/MuPoTs_test.json"
-# data_coco_root = "/data/coco/"
-# data_muco_root = "/data/MuCo/"
-# ann_file_path = '/data/MuCo/annotations/MuCo.json'
+
+data_coco_root = "/data/coco/"
+data_muco_root = "/data/MuCo/"
+ann_muco_path = '/data/MuCo/annotations/MuCo.json'
 
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
@@ -46,7 +47,7 @@ train_pipeline = [
     # ),
     dict(
         type='opera.AugRandomFlip',
-        flip_ratio=0.5,  # 测试Flip
+        flip_ratio=1.0,  # 测试Flip
     ),
     # dict(
     #     type='opera.VisImg',
@@ -58,7 +59,7 @@ train_pipeline = [
     dict(
         type='opera.AugRandomRotate',
         max_rotate_degree=30,
-        rotate_prob=0.5,  # 测试Rotate
+        rotate_prob=1.0,  # 测试Rotate
     ),
     # dict(
     #     type='opera.VisImg',
@@ -103,7 +104,6 @@ train_pipeline = [
             ]
         ]
     ),
-    dict(type='opera.AugPostProcess'),
     # dict(
     #     type='opera.VisImg',
     #     draw_bbox=True,
@@ -111,12 +111,13 @@ train_pipeline = [
     #     img_prefix='before_Normalize_00',
     #     img_path='/data/jupyter/PETR/opera/datasets/smap_utils/'
     # ),
+    dict(type='opera.AugPostProcess'),
     dict(type='mmdet.Normalize', **img_norm_cfg),
     dict(type='mmdet.Pad', size_divisor=1),  # 使用0填充图像边缘
     dict(type='opera.FormatBundle',
-            extra_keys=['gt_keypoints', 'gt_areas',]),
+            extra_keys=['gt_keypoints', 'gt_areas', 'gt_depths']),
     dict(type='mmdet.Collect',
-            keys=['img', 'gt_bboxes', 'gt_labels', 'gt_keypoints', 'gt_areas', 'dataset']),
+            keys=['img', 'gt_bboxes', 'gt_labels', 'gt_keypoints', 'gt_areas', 'gt_depths', 'dataset']),
 ]
 
 test_pipeline = [
@@ -137,25 +138,25 @@ test_pipeline = [
 
 
 # 仅使用修改格式后的coco数据集进行调试
-# data = dict(
-#     samples_per_gpu=2,
-#     workers_per_gpu=1,
-#     train=dict(
-#         type=dataset_type,
-#         ann_file=ann_muco_path,
-#         img_prefix=data_muco_root,
-#         pipeline=train_pipeline
-#     ),
-#     val=dict(
-#         type=dataset_type,
-#         ann_file=[],
-#         pipeline=test_pipeline
-#     ),
-#     test=dict(
-#         ann_file=[],
-#         pipeline=test_pipeline,
-#     )
-# )
+data = dict(
+    samples_per_gpu=2,
+    workers_per_gpu=0,
+    train=dict(
+        type=dataset_type,
+        ann_file=ann_muco_path,
+        img_prefix=data_muco_root,
+        pipeline=train_pipeline
+    ),
+    val=dict(
+        type=dataset_type,
+        ann_file=[],
+        pipeline=test_pipeline
+    ),
+    test=dict(
+        ann_file=[],
+        pipeline=test_pipeline,
+    )
+)
 
 # # 使用test_MuPoTs数据集进行eval
 # data = dict(
@@ -182,28 +183,28 @@ test_pipeline = [
 # )
 
 # 使用MuPoTs数据集进行eval
-data = dict(
-    samples_per_gpu=2,
-    workers_per_gpu=1,
-    train=dict(
-        type=dataset_type,
-        ann_file=[],
-        img_prefix=[],
-        pipeline=train_pipeline
-    ),
-    val=dict(
-        type=dataset_type,
-        ann_file=ann_mupots3d_path,
-        img_prefix=data_mupots3d_root,
-        pipeline=test_pipeline
-    ),
-    test=dict(
-        type=dataset_type,
-        ann_file=ann_mupots3d_path,
-        img_prefix=data_mupots3d_root,
-        pipeline=test_pipeline,
-    )
-)
+# data = dict(
+#     samples_per_gpu=2,
+#     workers_per_gpu=1,
+#     train=dict(
+#         type=dataset_type,
+#         ann_file=[],
+#         img_prefix=[],
+#         pipeline=train_pipeline
+#     ),
+#     val=dict(
+#         type=dataset_type,
+#         ann_file=ann_mupots3d_path,
+#         img_prefix=data_mupots3d_root,
+#         pipeline=test_pipeline
+#     ),
+#     test=dict(
+#         type=dataset_type,
+#         ann_file=ann_mupots3d_path,
+#         img_prefix=data_mupots3d_root,
+#         pipeline=test_pipeline,
+#     )
+# )
 
 # train config:
 # data = dict(
