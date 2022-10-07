@@ -138,7 +138,7 @@ class PoseHungarianAssigner3D(BaseAssigner):
             root_idx = 2
             gt_depths_tmp = gt_depths  # [numt_gts, 15]
             depth_pred_tmp = depth_pred.clone().detach() # [300, 15], 网络预测的深度
-            root_depth = depth_pred_tmp[:, root_idx].unsqueeze(-1)
+            root_depth = depth_pred_tmp[:, root_idx].clone().unsqueeze(-1)
             depth_pred_tmp[:, root_idx] = 0
             depth_pred_tmp[:, :] += root_depth  # [300, 15], keypoints 绝对深度
         

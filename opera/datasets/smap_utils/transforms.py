@@ -559,17 +559,20 @@ class AugPostProcess():
         depth = depth / scale_x / f_x
         """
         keypoints = results['gt_keypoints'].copy()
-        kpt_coords = keypoints[:, :, :2]  # (x, y), [num_gts, 15, 11]
-        vis_flag = keypoints[:, :, 3]  # (vis)
-        kpt = np.concatenate((kpt_coords, vis_flag[..., None]), -1)
-        results['gt_keypoints'] = kpt
-        
-        depth = keypoints[:, :, -5:]  # [Z, fx, fy, cx, cy]. [num_gts, 15, 5]
-        depth_Z = np.zeros(vis_flag.shape, dtype=np.float32)
-        scale_w = results['scale_factor'][0]
-        depth_Z[vis_flag > 0] = depth[vis_flag > 0][:, 0] / scale_w / \
-            depth[vis_flag > 0][:, 1]  # [num_gts, 15]
-        results['gt_depths'] = depth_Z
+        if keypoints.shape[0] != 0:
+            kpt_coords = keypoints[:, :, :2]  # (x, y), [num_gts, 15, 11]
+            vis_flag = keypoints[:, :, 3]  # (vis)
+            kpt = np.concatenate((kpt_coords, vis_flag[..., None]), -1)
+            results['gt_keypoints'] = kpt
+            
+            depth = keypoints[:, :, -5:]  # [Z, fx, fy, cx, cy]. [num_gts, 15, 5]
+            depth_Z = np.zeros(vis_flag.shape, dtype=np.float32)
+            scale_w = results['scale_factor'][0]
+            depth_Z[vis_flag > 0] = depth[vis_flag > 0][:, 0] / scale_w / \
+                depth[vis_flag > 0][:, 1]  # [num_gts, 15]
+            results['gt_depths'] = depth_Z
+        else:
+            results['gt_depths'] = 0
         
         return results
 

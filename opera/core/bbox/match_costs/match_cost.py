@@ -160,7 +160,7 @@ class DepthL1Cost(object):
                     kpt_depth_weight=1.0):
         self.kpt_depth_weight = kpt_depth_weight
         
-    def __call__(self, depth_pred, gt_depths , valid_kpt_flag):
+    def __call__(self, depth_pred, gt_depths, valid_kpt_flag):
         """求深度损失 及其所占比例
         Args:
             depth_pred: 预测的关键点的绝对深度  # [300, 15]
@@ -168,21 +168,19 @@ class DepthL1Cost(object):
             valid_kpt_flag (_type_): 有效的关键点标志位， vis, [N, 15]
         """
         depth_costs = []
-
         for i in range(len(gt_depths)):
-            depth_pred_tmp = depth_pred.clone()
+            depth_pred_tmp = depth_pred.clone()  # [300, 15]
             valid_flag = valid_kpt_flag[i] > 0  # [15]
             valid_flag_expand = valid_flag.unsqueeze(0).expand_as(depth_pred_tmp)
-            depth_pred_tmp[~valid_flag_expand] = 0
+            depth_pred_tmp[~valid_flag_expand] = 0  # [300, 15]
 
             # 计算关键点深度损失
             depth_cost = torch.cdist(
                 depth_pred_tmp,
-                gt_depths.unsqueeze(0),  # [1, 15]
-                p=1,)  # [300, 15]
+                gt_depths[i].unsqueeze(0),  # [1, 15]
+                p=1,)  # [300, 1]
             avg_factor = torch.clamp(valid_flag.float().sum(), 1.0)
             depth_cost = depth_cost/ avg_factor
-            
             depth_costs.append(depth_cost)
             
         kpt_depth_cost = torch.cat(depth_costs, dim=1)

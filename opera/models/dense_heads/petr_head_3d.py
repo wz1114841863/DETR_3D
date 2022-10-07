@@ -316,7 +316,7 @@ class PETRHead3D(AnchorFreeHead):
         enc_outputs_kpt = enc_outputs_kpt.sigmoid()  # inf -> 1.0 防止损失变为nan
         outputs_classes = []  # len = 3, (bs, 300, 1)
         outputs_kpts = []  # len = 3, (bs, 300, 30)
-        outputs_depths = []  # len = 3, (bs, 300, 16)
+        outputs_depths = []  # len = 3, (bs, 300, 15)
         
         for lvl in range(hs.shape[0]):  # 3
             if lvl == 0:
@@ -472,8 +472,8 @@ class PETRHead3D(AnchorFreeHead):
                         gt_labels=None,
                         gt_keypoints=None,
                         gt_areas=None,
-                        gt_bboxes_ignore=None,
                         gt_depths=None,
+                        gt_bboxes_ignore=None,
                         proposal_cfg=None,
                       **kwargs):
         """Forward function for training mode.
@@ -586,7 +586,7 @@ class PETRHead3D(AnchorFreeHead):
         all_gt_depths_list = [gt_depths_list for _ in range(num_dec_layers)]
         dataset_type_list = [dataset_type for _ in range(num_dec_layers)]
         img_metas_list = [img_metas for _ in range(num_dec_layers)]
-        # 修改输入，修改返回值
+
         losses_cls, losses_kpt, losses_oks, losses_depth, area_targets_list, \
         kpt_preds_list, depth_preds_list, \
         kpt_weights_list, depth_weights_list, \
@@ -602,7 +602,6 @@ class PETRHead3D(AnchorFreeHead):
                 torch.zeros_like(gt_labels_list[i])
                 for i in range(len(img_metas))
             ]
-            # FIXME
             enc_losses_cls, enc_losses_kpt, enc_losses_depth = \
                 self.loss_single_rpn(
                     enc_cls_scores, enc_kpt_preds, enc_depth_preds, binary_labels_list,
@@ -783,14 +782,14 @@ class PETRHead3D(AnchorFreeHead):
                 avg_factor=num_total_pos)
         
         # depth L1 Loss 
-        # 使用depth_weights和dataset在signle_target去控制是否计算深度loss, 故这里不在判断数据集类型
+        # 使用depth_weights和dataset在signle_target去控制是否计算深度loss, 故这里不再判断数据集类型
         depth_preds = depth_preds.reshape(-1, depth_preds.shape[-1])  # [bs * 300, 15]
         num_valid_depth = torch.clamp(
             reduce_mean(depth_weights.sum()), min=1).item()
         # 处理关键点的相对深度 至 绝对深度
         depth_preds_tmp = depth_preds.clone()  # 保证传回的depth_preds依旧是绝对 + 相对
         root_idx = 2
-        root_depth = depth_preds_tmp[..., root_idx].unsqueeze(-1)
+        root_depth = depth_preds_tmp[..., root_idx].clone().unsqueeze(-1)  # [600, 1]
         depth_preds_tmp[..., root_idx] = 0  # 先把root_depth清空
         depth_preds_tmp[..., :] += root_depth
         loss_depth = self.loss_depth(
@@ -957,8 +956,10 @@ class PETRHead3D(AnchorFreeHead):
             # 这里的gt_depths已经是处理过的归一化深度
             gt_depths_tmp = gt_depths[sampling_result.pos_assigned_gt_inds]
             gt_keypoints_tmp = gt_keypoints[sampling_result.pos_assigned_gt_inds]  # [num_gts, 15, 3] 
-            valid_idx = gt_keypoints_tmp [:, :, 2] > 0  # vis, [num_gts, 15]
-            depth_weights[pos_inds] = valid_idx.int()
+            valid_idx = gt_keypoints_tmp [:, :, 2] > 0 # vis, [num_gts, 15]
+            pos_depth_weights = depth_weights[pos_inds]
+            pos_depth_weights[valid_idx] = 1.0
+            depth_weights[pos_inds] = pos_depth_weights
             depth_targets[pos_inds] = gt_depths_tmp
         else:
             raise  NotImplementedError("未知的dataset in _get_target_single.")
@@ -1050,7 +1051,7 @@ class PETRHead3D(AnchorFreeHead):
         assert depth_preds.shape[-1] == self.num_keypoints, f"shape 与设想不一致"
         # 将相对深度转为绝对深度
         root_idx = 2
-        root_depth = depth_preds[:, root_idx].unsqueeze(-1)
+        root_depth = depth_preds[:, root_idx].clone().unsqueeze(-1)
         depth_preds[:, root_idx] = 0
         depth_preds[:, :] += root_depth
         num_valid_depth = torch.clamp(
@@ -1209,7 +1210,7 @@ class PETRHead3D(AnchorFreeHead):
         
         # 将深度处理为绝对深度， 同时乘以 scale, 
         root_idx = 2
-        root_depth = depth_pred[:, root_idx]
+        root_depth = depth_pred[:, root_idx].clone()
         depth_pred[:, root_idx] = 0
         depth_pred[:, :] = depth_pred[:, :] + root_depth # [100, 15]
         depth_pred = depth_pred * scale_factor[0]
