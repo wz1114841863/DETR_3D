@@ -565,8 +565,10 @@ class AugPostProcess():
         results['gt_keypoints'] = kpt
         
         depth = keypoints[:, :, -5:]  # [Z, fx, fy, cx, cy]. [num_gts, 15, 5]
+        depth_Z = np.zeros(vis_flag.shape, dtype=np.float32)
         scale_w = results['scale_factor'][0]
-        depth_Z = depth[:, :, 0] / scale_w / depth[:, :, 1]  # [num_gts, 15]
+        depth_Z[vis_flag > 0] = depth[vis_flag > 0][:, 0] / scale_w / \
+            depth[vis_flag > 0][:, 1]  # [num_gts, 15]
         results['gt_depths'] = depth_Z
         
         return results

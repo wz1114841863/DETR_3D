@@ -1207,10 +1207,14 @@ class PETRHead3D(AnchorFreeHead):
         # det_kpts = torch.cat(  # [100, 15, 3]
         #     (det_kpts, det_kpts.new_ones(det_kpts[..., :1].shape)), dim=2)
         
-        # 这里的深度是尚未处理的深度 中心点绝对深度 + 关键点相对深度
-        det_depths = depth_pred  # [100, 16]
+        # 将深度处理为绝对深度， 同时乘以 scale, 
+        root_idx = 2
+        root_depth = depth_pred[:, root_idx]
+        depth_pred[:, root_idx] = 0
+        depth_pred[:, :] = depth_pred[:, :] + root_depth # [100, 15]
+        depth_pred = depth_pred * scale_factor[0]
 
-        return det_bboxes, det_labels, det_kpts, det_depths, scale_factor
+        return det_bboxes, det_labels, det_kpts, depth_pred
     
     def simple_test_bboxes(self, feats, img_metas, rescale=False):
         """Test det bboxes without test-time augmentation.

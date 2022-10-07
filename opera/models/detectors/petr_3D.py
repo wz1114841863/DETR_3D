@@ -106,9 +106,9 @@ class PETR3D(DETR):
             feat, img_metas, rescale=rescale)  # petr_head.simple_test_bboxes
 
         bbox_kpt_results = [
-            bbox_kpt2result_3d(det_bboxes, det_labels, det_kpts, det_depths, scale_factor,
+            bbox_kpt2result_3d(det_bboxes, det_labels, det_kpts, det_depths,
                             self.bbox_head.num_classes)
-            for det_bboxes, det_labels, det_kpts, det_depths, scale_factor in results_list
+            for det_bboxes, det_labels, det_kpts, det_depths in results_list
         ]
         return bbox_kpt_results  # [100, 5], [100, 15, 3], [100, 16]
 

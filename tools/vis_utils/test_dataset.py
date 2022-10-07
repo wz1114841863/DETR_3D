@@ -16,9 +16,9 @@ def main():
     dataset = [build_dataset(cfg.data.train)]
     count = 0
     print(f"start")
-    for i in range(120000, 150000):
+    for i in range(8000, 9000):
         data = dataset[0].__getitem__(i)
-        import pdb;pdb.set_trace()
+        # import pdb;pdb.set_trace()
         # print(f"有效的数据长度： {data['gt_bboxes']._data.shape[0]}")
         if data['gt_bboxes']._data.shape[0] == 0:
             print("error")

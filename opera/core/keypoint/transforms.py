@@ -154,7 +154,7 @@ def bbox_kpt2result(bboxes, labels, kpts, num_classes):
             [kpts[labels == i, :, :] for i in range(num_classes)]
 
 
-def bbox_kpt2result_3d(bboxes, labels, kpts, depths, scale_factor, num_classes):
+def bbox_kpt2result_3d(bboxes, labels, kpts, depths, num_classes):
     """Convert detection results to a list of numpy arrays.
 
     Args:
@@ -170,7 +170,7 @@ def bbox_kpt2result_3d(bboxes, labels, kpts, depths, scale_factor, num_classes):
         return [np.zeros((0, 5), dtype=np.float32) for i in range(num_classes)], \
             [np.zeros((0, kpts.size(1), 3), dtype=np.float32)
                 for i in range(num_classes)], \
-            [np.zeros((0, depths.size(1), 16), dtype=np.float32) 
+            [np.zeros((0, depths.size(1), 15), dtype=np.float32) 
                 for i in range(num_classes)]
     else:
         if isinstance(bboxes, torch.Tensor):
@@ -181,8 +181,7 @@ def bbox_kpt2result_3d(bboxes, labels, kpts, depths, scale_factor, num_classes):
             
         return [bboxes[labels == i, :] for i in range(num_classes)], \
             [kpts[labels == i, :, :] for i in range(num_classes)], \
-            [depths[labels == i, :] for i in range(num_classes)], \
-            [scale_factor]
+            [depths[labels == i, :] for i in range(num_classes)]
 
 def kpt_flip(kpts, img_shape, flip_pairs, direction):
     """Flip keypoints horizontally.
