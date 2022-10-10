@@ -183,6 +183,7 @@ def bbox_kpt2result_3d(bboxes, labels, kpts, depths, num_classes):
             [kpts[labels == i, :, :] for i in range(num_classes)], \
             [depths[labels == i, :] for i in range(num_classes)]
 
+
 def kpt_flip(kpts, img_shape, flip_pairs, direction):
     """Flip keypoints horizontally.
 
