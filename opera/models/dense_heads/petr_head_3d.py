@@ -1210,7 +1210,7 @@ class PETRHead3D(AnchorFreeHead):
         
         # 将深度处理为绝对深度， 同时乘以 scale, 
         root_idx = 2
-        root_depth = depth_pred[:, root_idx].clone()
+        root_depth = depth_pred[:, root_idx].clone().unsqueeze(-1)
         depth_pred[:, root_idx] = 0
         depth_pred[:, :] = depth_pred[:, :] + root_depth # [100, 15]
         depth_pred = depth_pred * scale_factor[0]

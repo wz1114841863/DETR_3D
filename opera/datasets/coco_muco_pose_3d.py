@@ -297,22 +297,18 @@ class JointDataset(CustomDataset):
             f"关键点长度与depth长度不同"
         assert len(pred_kpts) == len(pred_scores), \
             f"关键点长度与scores长度不同"        
-        
         num_gts = len(pred_depths)
         root_idx = 2  # 骨盆点
         pred_bodys_2d = np.zeros((num_gts, 15, 4))
         pred_rdepths = np.zeros((num_gts, ))  # (骨盆点深度, )
         for i in range(num_gts):
-            center_abs_depth = pred_depths[i][0]
-            kpt_abs_depth = pred_depths[i][1:] + pred_depths[i][0]
             # 根据smap公式计算Z，返回时已经将2d坐标乘以scale，detZ也已经乘以scale
             # 所以这里仅乘以了 fx
-            kpt_abs_depth = kpt_abs_depth * scale_dict['f_x']
+            kpt_abs_depth = pred_depths[i] * scale_dict['f_x']
             # 骨盆点深度
-            root_abs_depth = kpt_abs_depth[root_idx]
+            root_abs_depth = kpt_abs_depth[root_idx].copy()
             # 其余点相对于骨盆点的深度
             kpt_rel_root_depth = kpt_abs_depth - kpt_abs_depth[root_idx]
-            
             pred_bodys_2d[i][:, :2] = pred_kpts[i]
             pred_bodys_2d[i][:, 2] = kpt_rel_root_depth
             pred_bodys_2d[i][:, 3] = pred_scores[i]
@@ -398,11 +394,11 @@ class JointDataset(CustomDataset):
             result = results[i]
             # 取出result中对应数据
             bboxs, kpts, depths = result[0][0], result[1][0], result[2][0]
-            assert bboxs.shape == (100, 5), \
+            assert bboxs.shape == (30, 5), \
                 f"error. bboxs.shape:{bboxs.shape}"
-            assert kpts.shape == (100, 15, 2), \
+            assert kpts.shape == (30, 15, 2), \
                 f"error. kpts.shape:{kpts.shape}"
-            assert depths.shape == (100, 16), \
+            assert depths.shape == (30, 15), \
                 f"error. depths.shape:{depths.shape}"
             # gt 处理
             gt_bodys = []

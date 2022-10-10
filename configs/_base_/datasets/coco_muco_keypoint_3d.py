@@ -139,7 +139,7 @@ test_pipeline = [
 
 # 仅使用修改格式后的coco数据集进行调试
 # data = dict(
-#     samples_per_gpu=2,
+    # samples_per_gpu=2,
 #     workers_per_gpu=2,
 #     train=dict(
 #         type=dataset_type,
@@ -159,28 +159,28 @@ test_pipeline = [
 # )
 
 # # 使用test_MuPoTs数据集进行eval
-# data = dict(
-#     samples_per_gpu=2,
-#     workers_per_gpu=1,
-#     train=dict(
-#         type=dataset_type,
-#         ann_file=[],
-#         img_prefix=[],
-#         pipeline=train_pipeline
-#     ),
-#     val=dict(
-#         type=dataset_type,
-#         ann_file=test_ann_mupots3d_path,
-#         img_prefix=test_data_mupots3d_root,
-#         pipeline=test_pipeline
-#     ),
-#     test=dict(
-#         type=dataset_type,
-#         ann_file=test_ann_mupots3d_path,
-#         img_prefix=test_data_mupots3d_root,
-#         pipeline=test_pipeline,
-#     )
-# )
+data = dict(
+    samples_per_gpu=2,
+    workers_per_gpu=1,
+    train=dict(
+        type=dataset_type,
+        ann_file=[],
+        img_prefix=[],
+        pipeline=train_pipeline
+    ),
+    val=dict(
+        type=dataset_type,
+        ann_file=ann_mupots3d_path,
+        img_prefix=data_mupots3d_root,
+        pipeline=test_pipeline
+    ),
+    test=dict(
+        type=dataset_type,
+        ann_file=ann_mupots3d_path,
+        img_prefix=data_mupots3d_root,
+        pipeline=test_pipeline,
+    )
+)
 
 # 使用MuPoTs数据集进行eval
 # data = dict(
@@ -207,24 +207,24 @@ test_pipeline = [
 # )
 
 # train config:
-data = dict(
-    samples_per_gpu=2,
-    workers_per_gpu=0,
-    train=dict(
-        type=dataset_type,
-        ann_file=[ann_coco_path, ann_muco_path],
-        img_prefix=[data_coco_root, data_muco_root],
-        pipeline=train_pipeline
-    ),
-    val=dict(
-        type=dataset_type,
-        ann_file=[],
-        pipeline=test_pipeline
-    ),
-    test=dict(
-        ann_file=[],
-        pipeline=test_pipeline,
-    )
-)
+# data = dict(
+#     samples_per_gpu=2,
+#     workers_per_gpu=0,
+#     train=dict(
+#         type=dataset_type,
+#         ann_file=[ann_coco_path, ann_muco_path],
+#         img_prefix=[data_coco_root, data_muco_root],
+#         pipeline=train_pipeline
+#     ),
+#     val=dict(
+#         type=dataset_type,
+#         ann_file=[],
+#         pipeline=test_pipeline
+#     ),
+#     test=dict(
+#         ann_file=[],
+#         pipeline=test_pipeline,
+#     )
+# )
 
 evaluation = dict(interval=1, metric='keypoints')
