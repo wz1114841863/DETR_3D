@@ -222,10 +222,8 @@ class PetrTransformerDecoder3D(TransformerLayerSequence):
                 query,
                 *args,
                 reference_points=None,
-                kpts_depth=None,
                 valid_ratios=None,
                 kpt_branches=None,
-                depth_branches=None,
                 **kwargs):
         """Forward function for `TransformerDecoder`.
 
@@ -248,7 +246,6 @@ class PetrTransformerDecoder3D(TransformerLayerSequence):
         output = query  # [300, bs, 256]
         intermediate = []  # 中间层的输出
         intermediate_reference_points = []  # 中间层的输出
-        intermediate_kpts_depth = []  # 中间层的输出
 
         for lid, layer in enumerate(self.layers):  # Pose Decoder, self.layers == 3
             if reference_points.shape[-1] == self.num_keypoints * 2:  # [bs, 300, 30]
@@ -259,7 +256,7 @@ class PetrTransformerDecoder3D(TransformerLayerSequence):
                 assert reference_points.shape[-1] == 2
                 reference_points_input = reference_points[:, :, None] * \
                                             valid_ratios[:, None]
-
+            
             output = layer(  # [300, bs, 256]
                 output,
                 *args,
@@ -276,28 +273,19 @@ class PetrTransformerDecoder3D(TransformerLayerSequence):
                     reference_points = new_reference_points.detach()
                 else:
                     raise NotImplementedError
-                
-            if depth_branches is not None:
-                tmp = depth_branches[lid](output)  # [bs, 300, 15]
-                if kpts_depth.shape[-1] == self.num_keypoints:
-                    new_kpts_depth = tmp + kpts_depth
-                    kpts_depth = new_kpts_depth.detach()
-                else:
-                    raise NotImplementedError
             
             output = output.permute(1, 0, 2)  # [300, bs, 256]
             
             if self.return_intermediate:
                 intermediate.append(output)
                 intermediate_reference_points.append(reference_points)
-                intermediate_kpts_depth.append(kpts_depth)
+
 
         if self.return_intermediate:
             return torch.stack(intermediate), \
                 torch.stack(intermediate_reference_points), \
-                torch.stack(intermediate_kpts_depth),
 
-        return output, reference_points, new_kpts_depth
+        return output, reference_points
 
 
 @TRANSFORMER.register_module()
@@ -682,11 +670,11 @@ class PETRTransformer3D(Transformer):
                     1, 1, enc_outputs_depth.size(-1)))
             topk_depth = topk_depth.detach()
             
-            reference_points = topk_kpts_unact.sigmoid()  # [bs, 300, 30], 归一化后的坐标
-            kpts_depth = topk_depth  # [bs, 300, 15], 这里没有做任何处理
+            reference_points = topk_kpts_unact.sigmoid()  # [bs, 300, 30], 归一化后的坐标 
 
             init_reference_out = reference_points
-            init_depth_out = kpts_depth
+            init_depth_out = topk_depth  # [bs, 300, 15], 这里没有做任何处理
+            
             # learnable query and query_pos, query_embed 是随机初始化的。
             query_pos, query = torch.split(query_embed, c, dim=1)  # [300, 256]
             query_pos = query_pos.unsqueeze(0).expand(bs, -1, -1)  # [bs, 300, 256]
@@ -702,23 +690,20 @@ class PETRTransformer3D(Transformer):
         query = query.permute(1, 0, 2)  # [300, bs, 256]
         memory = memory.permute(1, 0, 2)  # [sum(h*w), bs, 256]
         query_pos = query_pos.permute(1, 0, 2)  # [300, bs, 256]
-        inter_states, inter_references, inter_depths = self.decoder(  # [num_dec, 300, bs, 256], [num_dec, bs, 300, 30]
+        inter_states, inter_references = self.decoder(  # [num_dec, 300, bs, 256], [num_dec, bs, 300, 30]
             query=query,
             key=None,
             value=memory,
             query_pos=query_pos,
             key_padding_mask=mask_flatten,
             reference_points=reference_points,
-            kpts_depth=kpts_depth,
             spatial_shapes=spatial_shapes,
             level_start_index=level_start_index,
             valid_ratios=valid_ratios,
-            kpt_branches=kpt_branches, 
-            depth_branches=depth_branches,
             **kwargs)
 
         if self.as_two_stage:
-            return inter_states, inter_references, inter_depths, \
+            return inter_states, inter_references, \
                 init_reference_out, init_depth_out, \
                 enc_outputs_class, enc_outputs_kpt_unact, enc_outputs_depth, \
                 hm_proto, memory

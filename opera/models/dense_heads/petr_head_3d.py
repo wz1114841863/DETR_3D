@@ -293,24 +293,23 @@ class PETRHead3D(AnchorFreeHead):
                 self.positional_encoding(mlvl_masks[-1]))
 
         query_embeds = self.query_embedding.weight  # (300, 512)
-        hs, inter_references, inter_depths, \
-            init_reference, init_depth, \
-                enc_outputs_class, enc_outputs_kpt, enc_outputs_depth, \
-                    hm_proto, memory = \
-                self.transformer(
-                    mlvl_feats,
-                    mlvl_masks,
-                    query_embeds,
-                    mlvl_positional_encodings,
-                    depth_branches=self.depth_branches,
-                    kpt_branches=self.kpt_branches \
-                        if self.with_kpt_refine else None,  # noqa:E501
-                    cls_branches=self.cls_branches \
-                        if self.as_two_stage else None,  # noqa:E501
-            )  # transformer.forward() 返回的结果
+        hs, inter_references, init_reference, init_depth, \
+            enc_outputs_class, enc_outputs_kpt, enc_outputs_depth, \
+                hm_proto, memory = \
+                    self.transformer(
+                        mlvl_feats,
+                        mlvl_masks,
+                        query_embeds,
+                        mlvl_positional_encodings,
+                        depth_branches=self.depth_branches,
+                        kpt_branches=self.kpt_branches \
+                            if self.with_kpt_refine else None,  # noqa:E501
+                        cls_branches=self.cls_branches \
+                            if self.as_two_stage else None,  # noqa:E501
+                    )  # transformer.forward() 返回的结果
         # hs: (3, 300, bs, 256), inter_references: [3, bs, 300, 30], inter_depths: [3, bs, 300, 16]
         # init_reference: (bs, 300, 30), init_depth: [bs, 300, 16]
-        # enc_outputs_class: (bs, sum(h*w), 1), enc_outputs_kpt: (..., 30), enc_outputs_depth: (..., 16)
+        # enc_outputs_class: (bs, sum(h*w), 1), enc_outputs_kpt: (..., 30), enc_outputs_depth: (..., 15)
         # hm_proto: (hm_memory:[bs, h1, w1, 256], mlvl_masks[0]:[bs, h1, w1]), memory: (sum(h*w), bs, 256)
         hs = hs.permute(0, 2, 1, 3)  # (3, bs, 300, 256)
         enc_outputs_kpt = enc_outputs_kpt.sigmoid()  # inf -> 1.0 防止损失变为nan
@@ -319,12 +318,12 @@ class PETRHead3D(AnchorFreeHead):
         outputs_depths = []  # len = 3, (bs, 300, 15)
         
         for lvl in range(hs.shape[0]):  # 3
+            # FIXME 这里好像没用到hs和inter_depths的最后一层
             if lvl == 0:
                 reference_kpt = init_reference  # [bs, 300, 30]
-                reference_depth = init_depth
+                # reference_depth = init_depth
             else:
                 reference_kpt = inter_references[lvl - 1]  # [bs, 300, 30]
-                reference_depth = inter_depths[lvl - 1]
             
             # class
             outputs_class = self.cls_branches[lvl](hs[lvl])  # [bs, 300, 1]
@@ -334,9 +333,8 @@ class PETRHead3D(AnchorFreeHead):
             tmp_kpt_coord += reference_kpt  # [bs, 300, 30]
             outputs_kpt = tmp_kpt_coord.sigmoid()
             # depth
-            tmp_kpt_depth = self.depth_branches[lvl](hs[lvl])  # [bs, 300, 15]
-            tmp_kpt_depth += reference_depth  # [bs, 300, 15]
-            outputs_depth = tmp_kpt_depth
+            reference_depth = self.depth_branches[lvl](hs[lvl])  # [bs, 300, 15]
+            outputs_depth = reference_depth
 
             outputs_classes.append(outputs_class)
             outputs_kpts.append(outputs_kpt)
@@ -410,7 +408,6 @@ class PETRHead3D(AnchorFreeHead):
             outputs_kpts.append(outputs_kpt)
             
         outputs_kpts = torch.stack(outputs_kpts)  # [2, num_gts, 17, 2]
-        
 
         if not self.training:
             return outputs_kpts
