@@ -63,7 +63,7 @@ class SOITHead(DETRHead):
         self.mask_positional_encoding_cfg = mask_positional_encoding_cfg
         self.dice_mask_loss_weight = dice_mask_loss_weight
         self.bce_mask_loss_weight = bce_mask_loss_weight
-
+        import pdb;pdb.set_trace()
         super(SOITHead, self).__init__(
             *args, transformer=transformer, **kwargs)
 

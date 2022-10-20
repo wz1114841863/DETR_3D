@@ -174,7 +174,7 @@ test_pipeline = [
         ])
 ]
 dataset_type = 'mmdet.CocoDataset'
-data_root = '/dataset/public/coco/'
+data_root = '/home/notebook/code/personal/S9043252/multi-parsing/data/coco/'
 data = dict(
     samples_per_gpu=2,
     workers_per_gpu=2,
