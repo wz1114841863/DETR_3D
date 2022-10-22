@@ -810,10 +810,23 @@ class PETRHead3D(AnchorFreeHead):
         #     kpt_preds, kpt_targets, kpt_weights, avg_factor=num_valid_kpt)
 
         # keypoint rle loss
-        kpt_preds = kpt_preds.reshape(-1, kpt_preds.shape[-1])  # [bs * 300, 30]
-        kpt_sigmas = kpt_sigmas.reshape(-1, kpt_sigmas.shape[-1]) # [bs * 300, 30]
+        kpt_preds = kpt_preds.reshape(-1, kpt_preds.shape[-1] // 2, 2)  # [bs * 300, 15, 2]
+        kpt_sigmas = kpt_sigmas.reshape(-1, kpt_sigmas.shape[-1] // 2, 2).sigmoid()  # [bs * 300, 15, 2]
+        num_valid_kpt = torch.clamp(
+            reduce_mean(kpt_weights.sum()), min=1).item()
+        kpt_scores = 1 - kpt_sigmas
+        kpt_scores = torch.mean(kpt_scores, dim=2, keepdim=True)
         
+        kpt_targets = kpt_targets.reshape(-1, kpt_targets.shape[-1] // 2, 2)
+        kpt_weights = kpt_weights.reshape(-1, kpt_weights.shape[-1] // 2, 2)
         
+        kpt_bar_mu = (kpt_preds - kpt_targets) * kpt_weights / kpt_sigmas
+        kpt_log_phi = self.flow.log_prob(kpt_bar_mu.reshape(-1, 2)).reshape(-1, self.num_joints, 1)
+        
+        kpt_nf_loss = torch.log(kpt_sigmas) - kpt_log_phi 
+        
+        loss_kpt = self.loss_kpt(kpt_nf_loss, kpt_preds, kpt_sigmas, 
+                        kpt_targets, kpt_weights, avg_factor=num_valid_depth)
         # keypoint oks loss
         pos_inds = kpt_weights.sum(-1) > 0
         factors = factors[pos_inds][:, :2].repeat(1, kpt_preds.shape[-1] // 2)
@@ -834,7 +847,7 @@ class PETRHead3D(AnchorFreeHead):
                 pos_areas,
                 avg_factor=num_total_pos)
         
-        # depth L1 Loss 
+        # depth rle Loss 
         # 使用depth_weights和dataset在signle_target去控制是否计算深度loss, 故这里不再判断数据集类型
         depth_preds = depth_preds.reshape(-1, depth_preds.shape[-1])  # [bs * 300, 15]
         num_valid_depth = torch.clamp(
@@ -845,8 +858,22 @@ class PETRHead3D(AnchorFreeHead):
         root_depth = depth_preds_tmp[..., root_idx].clone().unsqueeze(-1)  # [600, 1]
         depth_preds_tmp[..., root_idx] = 0  # 先把root_depth清空
         depth_preds_tmp[..., :] += root_depth
-        loss_depth = self.loss_depth(
-            depth_preds_tmp, depth_targets, depth_weights, avg_factor=num_valid_depth)
+        
+        depth_sigmas_tmp = depth_sigmas.clone()
+        root_sigma = depth_sigmas_tmp[..., root_idx].clone().unsqueeze(-1)
+        depth_sigmas_tmp[..., root_idx] = 0
+        depth_sigmas_tmp[..., :] += root_sigma
+        
+        depth_scores = 1 - depth_sigmas_tmp
+        depth_scores = torch.mean(depth_scores, dim=2, keepdim=True)
+        
+        depth_bar_mu = (depth_preds_tmp - depth_targets) * depth_weights / depth_sigmas_tmp
+        depth_log_phi = self.flow.log_prob(depth_bar_mu.reshape(-1, 1)).reshape(-1, self.num_joints, 1)
+        
+        depth_nf_loss = torch.log(depth_sigmas_tmp) - depth_log_phi
+        
+        loss_depth = self.loss_depth(depth_nf_loss, depth_preds_tmp, depth_sigmas_tmp, 
+                        depth_targets, depth_weights, avg_factor=num_valid_depth)
         
         return loss_cls, loss_kpt, loss_oks, loss_depth, area_targets,\
             kpt_preds, depth_preds, \
