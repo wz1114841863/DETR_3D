@@ -570,6 +570,12 @@ class AugPostProcess():
             scale_w = results['scale_factor'][0]
             depth_Z[vis_flag > 0] = depth[vis_flag > 0][:, 0] / scale_w / \
                 depth[vis_flag > 0][:, 1]  # [num_gts, 15]
+            # 使用相对深度进行监督
+            root_idx = 2
+            root_depth = depth_Z[:, root_idx].copy()
+            root_depth = root_depth[:, np.newaxis]
+            depth_Z = depth_Z - root_depth
+            depth_Z[:, root_idx] = root_depth.squeeze(-1)
             results['gt_depths'] = depth_Z
         else:
             results['gt_depths'] = 0

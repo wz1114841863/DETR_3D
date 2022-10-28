@@ -785,10 +785,10 @@ class PETRHead3D(AnchorFreeHead):
             reduce_mean(depth_weights.sum()), min=1).item()
         # 处理关键点的相对深度 至 绝对深度
         depth_preds_tmp = depth_preds.clone()  # 保证传回的depth_preds依旧是绝对 + 相对
-        root_idx = 2
-        root_depth = depth_preds_tmp[..., root_idx].clone().unsqueeze(-1)  # [600, 1]
-        depth_preds_tmp[..., root_idx] = 0  # 先把root_depth清空
-        depth_preds_tmp[..., :] += root_depth
+        # root_idx = 2
+        # root_depth = depth_preds_tmp[..., root_idx].clone().unsqueeze(-1)  # [600, 1]
+        # depth_preds_tmp[..., root_idx] = 0  # 先把root_depth清空
+        # depth_preds_tmp[..., :] += root_depth
         loss_depth = self.loss_depth(
             depth_preds_tmp, depth_targets, depth_weights, avg_factor=num_valid_depth)
         
@@ -1047,10 +1047,10 @@ class PETRHead3D(AnchorFreeHead):
         depth_preds = depth_preds.reshape(-1, depth_preds.shape[-1])
         assert depth_preds.shape[-1] == self.num_keypoints, f"shape 与设想不一致"
         # 将相对深度转为绝对深度
-        root_idx = 2
-        root_depth = depth_preds[:, root_idx].clone().unsqueeze(-1)
-        depth_preds[:, root_idx] = 0
-        depth_preds[:, :] += root_depth
+        # root_idx = 2
+        # root_depth = depth_preds[:, root_idx].clone().unsqueeze(-1)
+        # depth_preds[:, root_idx] = 0
+        # depth_preds[:, :] += root_depth
         num_valid_depth = torch.clamp(
             reduce_mean(depth_weights.sum()), min=1).item()
         loss_depth = self.loss_depth_rpn(
