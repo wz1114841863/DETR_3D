@@ -135,12 +135,12 @@ class PoseHungarianAssigner3D(BaseAssigner):
         if dataset_type == "COCO":
             kpt_depth_cost = 0
         elif dataset_type == "MUCO":
-            root_idx = 2
+            # root_idx = 2
             gt_depths_tmp = gt_depths  # [numt_gts, 15]
             depth_pred_tmp = depth_pred.clone().detach() # [300, 15], 网络预测的深度
-            root_depth = depth_pred_tmp[:, root_idx].clone().unsqueeze(-1)
-            depth_pred_tmp[:, root_idx] = 0
-            depth_pred_tmp[:, :] += root_depth  # [300, 15], keypoints 绝对深度
+            # root_depth = depth_pred_tmp[:, root_idx].clone().unsqueeze(-1)
+            # depth_pred_tmp[:, root_idx] = 0
+            # depth_pred_tmp[:, :] += root_depth  # [300, 15], keypoints 绝对深度
         
             kpt_depth_cost = self.depth_cost(depth_pred_tmp, 
                 gt_depths_tmp, valid_kpt_flag)  # 需要是： [300, num_kpt]

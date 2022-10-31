@@ -206,7 +206,7 @@ data = dict(
     )
 )
 
-# # train config:
+# train config:
 # data = dict(
 #     samples_per_gpu=2,
 #     workers_per_gpu=0,

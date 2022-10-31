@@ -127,8 +127,8 @@ model = dict(
         loss_hm=dict(type='opera.CenterFocalLoss', loss_weight=4.0),
         loss_kpt_refine=dict(type='mmdet.L1Loss', loss_weight=80.0),
         loss_oks_refine=dict(type='opera.OKSLoss', num_keypoints=15, loss_weight=3.0),
-        loss_depth=dict(type='mmdet.L1Loss', loss_weight=7),
-        loss_depth_rpn=dict(type='mmdet.L1Loss', loss_weight=7),
+        loss_depth=dict(type='mmdet.L1Loss', loss_weight=70.0),
+        loss_depth_rpn=dict(type='mmdet.L1Loss', loss_weight=70.0),
     ),
     train_cfg=dict(
         assigner=dict(
@@ -164,6 +164,6 @@ optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
 auto_scale_lr = dict(enable=False, base_batch_size=16)
 
 # learning policy
-lr_config = dict(policy='step', step=[10, 15])
-runner = dict(type='EpochBasedRunner', max_epochs=20)
+lr_config = dict(policy='step', step=[10])
+runner = dict(type='EpochBasedRunner', max_epochs=15)
 checkpoint_config = dict(interval=1, max_keep_ckpts=20)
