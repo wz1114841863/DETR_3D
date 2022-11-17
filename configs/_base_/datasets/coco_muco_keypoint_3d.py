@@ -1,20 +1,25 @@
 # dataset settings, use 3d dataset
 dataset_type = 'opera.JointDataset'
 # data_root
-data_coco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/coco2017/'
-data_muco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/MuCo/'
-data_mupots3d_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/MuPoTs/MultiPersonTestSet/'
+# data_coco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/coco2017/'
+# data_muco_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/MuCo/'
+# data_mupots3d_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/MuPoTs/MultiPersonTestSet/'
 
-ann_coco_path = '/home/notebook/code/personal/S9043252/wz/dataset_anno//coco_keypoints_train2017.json'
-ann_muco_path = '/home/notebook/code/personal/S9043252/wz/dataset_anno/MuCo.json'
-ann_mupots3d_path = "/home/notebook/code/personal/S9043252/wz/dataset_anno/MuPoTS.json"
+# ann_coco_path = '/home/notebook/code/personal/S9043252/wz/dataset_anno//coco_keypoints_train2017.json'
+# ann_muco_path = '/home/notebook/code/personal/S9043252/wz/dataset_anno/MuCo.json'
+# ann_mupots3d_path = "/home/notebook/code/personal/S9043252/wz/dataset_anno/MuPoTS.json"
 
-test_data_mupots3d_root = "/home/notebook/code/personal/S9043252/wz/data/MuPoTs/"
-test_ann_mupots3d_path = "/home/notebook/code/personal/S9043252/wz/dataset_anno/MuPoTs_test.json"
+# test_data_mupots3d_root = "/home/notebook/code/personal/S9043252/wz/data/MuPoTs/"
+# test_ann_mupots3d_path = "/home/notebook/code/personal/S9043252/wz/dataset_anno/MuPoTs_test.json"
 
-# data_coco_root = "/data/coco/"
-# data_muco_root = "/data/MuCo/"
-# ann_muco_path = '/data/MuCo/annotations/MuCo.json'
+data_coco_root = "/data/coco/"
+data_muco_root = "/data/MuCo/"
+data_mupots3d_root = "/data/jupyter/SMAP-master/data/mupots-3d-eval/"
+
+ann_coco_path = "/data/coco/annotations/coco_keypoints_train2017.json"
+ann_muco_path = "/data/MuCo/annotations/MuCo.json"
+ann_mupots3d_path = "/data/jupyter/SMAP-master/data/mupots-3d-eval/MuPoTS.json"
+
 
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
@@ -159,28 +164,28 @@ test_pipeline = [
 # )
 
 # # 使用test_MuPoTs数据集进行eval
-data = dict(
-    samples_per_gpu=2,
-    workers_per_gpu=1,
-    train=dict(
-        type=dataset_type,
-        ann_file=[],
-        img_prefix=[],
-        pipeline=train_pipeline
-    ),
-    val=dict(
-        type=dataset_type,
-        ann_file=ann_mupots3d_path,
-        img_prefix=data_mupots3d_root,
-        pipeline=test_pipeline
-    ),
-    test=dict(
-        type=dataset_type,
-        ann_file=ann_mupots3d_path,
-        img_prefix=data_mupots3d_root,
-        pipeline=test_pipeline,
-    )
-)
+# data = dict(
+#     samples_per_gpu=2,
+#     workers_per_gpu=1,
+#     train=dict(
+#         type=dataset_type,
+#         ann_file=[],
+#         img_prefix=[],
+#         pipeline=train_pipeline
+#     ),
+#     val=dict(
+#         type=dataset_type,
+#         ann_file=ann_mupots3d_path,
+#         img_prefix=data_mupots3d_root,
+#         pipeline=test_pipeline
+#     ),
+#     test=dict(
+#         type=dataset_type,
+#         ann_file=ann_mupots3d_path,
+#         img_prefix=data_mupots3d_root,
+#         pipeline=test_pipeline,
+#     )
+# )
 
 # 使用MuPoTs数据集进行eval
 # data = dict(
@@ -207,24 +212,24 @@ data = dict(
 # )
 
 # train config:
-# data = dict(
-#     samples_per_gpu=2,
-#     workers_per_gpu=0,
-#     train=dict(
-#         type=dataset_type,
-#         ann_file=[ann_coco_path, ann_muco_path],
-#         img_prefix=[data_coco_root, data_muco_root],
-#         pipeline=train_pipeline
-#     ),
-#     val=dict(
-#         type=dataset_type,
-#         ann_file=[],
-#         pipeline=test_pipeline
-#     ),
-#     test=dict(
-#         ann_file=[],
-#         pipeline=test_pipeline,
-#     )
-# )
+data = dict(
+    samples_per_gpu=2,
+    workers_per_gpu=0,
+    train=dict(
+        type=dataset_type,
+        ann_file=[ann_coco_path, ann_muco_path],
+        img_prefix=[data_coco_root, data_muco_root],
+        pipeline=train_pipeline
+    ),
+    val=dict(
+        type=dataset_type,
+        ann_file=[],
+        pipeline=test_pipeline
+    ),
+    test=dict(
+        ann_file=[],
+        pipeline=test_pipeline,
+    )
+)
 
 evaluation = dict(interval=1, metric='keypoints')

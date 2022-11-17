@@ -14,8 +14,8 @@ from mmdet.models.dense_heads import AnchorFreeHead
 from opera.core.bbox import build_assigner, build_sampler
 from opera.core.keypoint import gaussian_radius, draw_umich_gaussian
 from opera.models.utils import build_positional_encoding, build_transformer
-from opera.models.dense_heads import RealNVP
-from ..builder import HEADS, build_loss
+
+from ..builder import HEADS, build_loss, build_head
 
 
 @HEADS.register_module()
@@ -93,6 +93,7 @@ class PETRHead3D(AnchorFreeHead):
                     loss_depth_rpn=dict(type='mmdet.L1Loss', loss_weight=70.0),
                     loss_kpt_refine=dict(type='mmdet.L1Loss', loss_weight=70.0),
                     loss_oks_refine=dict(type='opera.OKSLoss', loss_weight=2.0),
+                    rle_nvp=dict(type='opera.RealNVP'),
                     test_cfg=dict(max_per_img=100),
                     init_cfg=None,
                     **kwargs):
@@ -141,6 +142,7 @@ class PETRHead3D(AnchorFreeHead):
         self.loss_depth = build_loss(loss_depth)  # L1Loss()
         self.loss_depth_rpn = build_loss(loss_depth_rpn)  # L1Loss()
         # self.loss_depth_refine = build_loss(loss_depth_refine)  # L1Loss()
+        flow = build_head(rle_nvp)
         
         if self.loss_cls.use_sigmoid:
             self.cls_out_channels = num_classes  # 1
@@ -159,9 +161,9 @@ class PETRHead3D(AnchorFreeHead):
         assert num_feats * 2 == self.embed_dims, 'embed_dims should' \
             f' be exactly 2 times of num_feats. Found {self.embed_dims}' \
             f' and {num_feats}.'
-        self._init_layers()
+        self._init_layers(flow)
 
-    def _init_layers(self):
+    def _init_layers(self, flow):
         """Initialize classification branch and keypoint branch of head."""
         fc_cls = Linear(self.embed_dims, self.cls_out_channels)  # Linear(256, 1, bias=True)
 
@@ -182,9 +184,6 @@ class PETRHead3D(AnchorFreeHead):
             depth_branch.append(nn.ReLU())
         depth_branch.append(Linear(512, self.num_keypoints))  # Linear(512, 15, bias=True)
         depth_branch = nn.Sequential(*depth_branch)
-        
-        # RLE Loss
-        flow = RealNVP()
         
         kpt_sigma_branch = []
         kpt_sigma_branch.append(Linear(self.embed_dims, 512))  # Linear(256, 512, bias=True) 
@@ -541,7 +540,6 @@ class PETRHead3D(AnchorFreeHead):
         outs = self(x, img_metas)
         memory, mlvl_masks = outs[-2:]
         outs = outs[:-2]
-
         if gt_labels is None:
             loss_inputs = outs + (gt_bboxes, gt_keypoints, gt_areas, img_metas)
         else:

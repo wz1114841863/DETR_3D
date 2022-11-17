@@ -123,7 +123,6 @@ def train_model(model,
                 validate=False,
                 timestamp=None,
                 meta=None):
-
     cfg = compat_cfg(cfg)
     logger = get_root_logger(log_level=cfg.log_level)
 

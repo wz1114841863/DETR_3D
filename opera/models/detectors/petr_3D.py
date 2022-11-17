@@ -55,6 +55,7 @@ class PETR3D(DETR):
         Returns:
             dict[str, Tensor]: A dictionary of loss components.
         """
+        import pdb;pdb.set_trace()
         super(SingleStageDetector, self).forward_train(img, img_metas)  # BaseDetector.forward_train()
         x = self.extract_feat(img)  # x: [bs, 256, H / 8 ..., W / 8 ...], len(x) = 4
         losses = self.bbox_head.forward_train(x, img_metas, dataset, gt_bboxes,

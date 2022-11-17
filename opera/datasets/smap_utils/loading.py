@@ -50,7 +50,6 @@ class LoadImgFromFile:
         
         if self.to_float32:
             img = img.astype(np.float32)
-        
         results['filename'] = filepath
         results['ori_filename'] = results['ann_info']['img_paths']
         results['img'] = img

@@ -129,6 +129,7 @@ model = dict(
         loss_oks_refine=dict(type='opera.OKSLoss', num_keypoints=15, loss_weight=3.0),
         loss_depth=dict(type='mmdet.L1Loss', loss_weight=7),
         loss_depth_rpn=dict(type='mmdet.L1Loss', loss_weight=7),
+        rle_nvp=dict(type='opera.RealNVP',),
     ),
     train_cfg=dict(
         assigner=dict(

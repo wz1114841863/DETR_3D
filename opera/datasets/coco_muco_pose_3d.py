@@ -150,7 +150,6 @@ class JointDataset(CustomDataset):
                 # print(f"长度为0")
                 idx = self._rand_another(idx) 
                 continue
-            
             return data
         
     def _filter_imgs(self, min_size=32):
