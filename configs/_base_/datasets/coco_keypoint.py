@@ -1,8 +1,8 @@
 # dataset settings
 dataset_type = 'opera.CocoPoseDataset'
 # data_root = '/home/notebook/data/group/wangxiong/smoothformer/hpe_data/data/coco2017/'
-data_root = '/home/notebook/code/personal/S9043252/wz/data/wz_coco/'
-# data_root = '/data/coco/'
+# data_root = '/home/notebook/code/personal/S9043252/wz/data/wz_coco/'
+data_root = '/data/coco/'
 
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
@@ -92,7 +92,7 @@ test_pipeline = [
 
 data = dict(
     samples_per_gpu=2,
-    workers_per_gpu=1,
+    workers_per_gpu=0,
     train=dict(
         type=dataset_type,
         ann_file=data_root + 'annotations/person_keypoints_train2017.json',

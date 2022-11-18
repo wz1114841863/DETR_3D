@@ -38,9 +38,12 @@ opera/datasets/pipelines/__init__.py
 opera/datasets/pipelines/formatting.py
 opera/datasets/pipelines/loading.py
 opera/datasets/pipelines/transforms.py
+opera/datasets/smap_utils/ImageAugmentation.py
 opera/datasets/smap_utils/__init__.py
+opera/datasets/smap_utils/data_settings.py
 opera/datasets/smap_utils/formatting.py
 opera/datasets/smap_utils/loading.py
+opera/datasets/smap_utils/representation.py
 opera/datasets/smap_utils/test_smap_json.py
 opera/datasets/smap_utils/transforms.py
 opera/datasets/smap_utils/vis_img.py
@@ -55,6 +58,7 @@ opera/models/dense_heads/soit_head.py
 opera/models/detectors/__init__.py
 opera/models/detectors/inspose.py
 opera/models/detectors/petr.py
+opera/models/detectors/petr_3D.py
 opera/models/detectors/soit.py
 opera/models/losses/__init__.py
 opera/models/losses/center_focal_loss.py
