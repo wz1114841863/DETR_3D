@@ -515,9 +515,7 @@ class PETRTransformer3D(Transformer):
                 query_embed,
                 mlvl_pos_embeds,
                 depth_branches=None,
-                depth_sigma_branches=None,
                 kpt_branches=None,
-                kpt_sigma_braches=None,
                 cls_branches=None,
                 **kwargs):
         """Forward function for `Transformer`.
@@ -599,7 +597,7 @@ class PETRTransformer3D(Transformer):
         feat_flatten = feat_flatten.permute(1, 0, 2)  # (sun(h*w), bs, embed_dims=256)
         lvl_pos_embed_flatten = lvl_pos_embed_flatten.permute(
             1, 0, 2)  # (sun(h*w), bs, embed_dims)
-        # 调用 ./mmdet/models/utils/transformer.py TransformerLayerSequence.fprwaed()
+        # 调用 ./mmdet/models/utils/transformer.py TransformerLayerSequence.forward()
         memory = self.encoder(  # the refined multi-scale visual feature memory F, [sum(h*w), bs, 256]
             query=feat_flatten,
             key=None,
@@ -653,14 +651,14 @@ class PETRTransformer3D(Transformer):
             enc_outputs_kpt_unact[..., 0::2] += output_proposals[..., 0:1]  # [bs, sum(h*w), 15]
             enc_outputs_kpt_unact[..., 1::2] += output_proposals[..., 1:2]  # [bs, sum(h*w), 15]
             # enc_outputs_kpt  sigma
-            enc_outputs_kpt_unact_sigma = kpt_sigma_braches[self.decoder.num_layers](
-                output_memory)
+            # enc_outputs_kpt_unact_sigma = kpt_sigma_braches[self.decoder.num_layers](
+            #     output_memory)
             # depth
             enc_outputs_depth = \
                 depth_branches[self.decoder.num_layers](output_memory)  # [bs, sum(h*w), 15]
             # depth sigma
-            enc_output_depth_sigma = \
-                depth_sigma_branches[self.decoder.num_layers](output_memory)
+            # enc_output_depth_sigma = \
+            #     depth_sigma_branches[self.decoder.num_layers](output_memory)
             # topk
             topk = self.two_stage_num_proposals  # 300
             topk_proposals = torch.topk(
@@ -714,7 +712,6 @@ class PETRTransformer3D(Transformer):
             return inter_states, inter_references, \
                 init_reference_out, init_depth_out, \
                 enc_outputs_class, enc_outputs_kpt_unact, enc_outputs_depth, \
-                enc_outputs_kpt_unact_sigma, enc_output_depth_sigma, \
                 hm_proto, memory
 
         return inter_states, init_reference_out, \
