@@ -18,11 +18,11 @@ dataset_type = 'opera.JointDataset'
 
 data_coco_root = "/data/coco/"
 data_muco_root = "/data/MuCo/"
-data_mupots3d_root = "/data/jupyter/SMAP-master/data/mupots-3d-eval/"
+data_mupots3d_root = "/data/jupyter/SMAP-master/data/mupots-3d-eval/MultiPersonTestSet/"
 
 ann_coco_path = "/data/coco/annotations/coco_keypoints_train2017.json"
 ann_muco_path = "/data/MuCo/annotations/MuCo.json"
-ann_mupots3d_path = "/data/jupyter/SMAP-master/data/mupots-3d-eval/MuPoTS.json"
+ann_mupots3d_path = "/data/jupyter/SMAP-master/data/mupots-3d-eval/MultiPersonTestSet/MuPoTS.json"
 
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
@@ -226,11 +226,14 @@ data = dict(
     ),
     val=dict(
         type=dataset_type,
-        ann_file=[],
+        ann_file=ann_mupots3d_path,
+        img_prefix=data_mupots3d_root,
         pipeline=test_pipeline
     ),
     test=dict(
-        ann_file=[],
+        type=dataset_type,
+        ann_file=ann_mupots3d_path,
+        img_prefix=data_mupots3d_root,
         pipeline=test_pipeline,
     )
 )

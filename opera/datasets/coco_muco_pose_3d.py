@@ -365,7 +365,7 @@ class JointDataset(CustomDataset):
                 results, 
                 output_save_path,
                 mat_save_path,
-                save_json=True,
+                save_json=False,
                 save_mat=True,):
         """生成用于进行eval的json文件, 参考SMAP。
 
@@ -491,10 +491,10 @@ class JointDataset(CustomDataset):
             pose2d[name] = pred_2ds # nH x 15 x 4
 
         # 保存结果
-        # pose3d_save_path = mat_save_path + 'pose3d.mat'
-        # pose2d_save_path = mat_save_path + 'pose2d.mat'
-        pose3d_save_path = './pose3d.mat'
-        pose2d_save_path = './pose2d.mat'
+        pose3d_save_path = mat_save_path + '/pose3d.mat'
+        pose2d_save_path = mat_save_path + '/pose2d.mat'
+        # pose3d_save_path = './pose3d.mat'
+        # pose2d_save_path = './pose2d.mat'
         scio.savemat(pose3d_save_path, {'preds_3d_kpt':pose3d})
         scio.savemat(pose2d_save_path, {'preds_2d_kpt':pose2d})
         print(f"pose3d mat 数据保存至: {pose3d_save_path}")
